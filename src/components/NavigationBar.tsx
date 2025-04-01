@@ -36,7 +36,7 @@ export function NavigationBar() {
                 <div className="w-4 h-4 rounded-full bg-water-500"></div>
               </div>
             </div>
-            Hydrate Bazaar
+            AquaFlow
           </Link>
           
           {/* Search */}

@@ -19,7 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Minus, Trash2 } from 'lucide-react';
 
 export default function Cart() {
-  const { items, summary, updateItemAmount, removeItem, clearCart } = useCart();
+  const { items, summary, updateItemAmount, removeItem, clearCart, waiveDeliveryFee } = useCart();
   const { isAuthenticated } = useAuth();
   const [showAdDialog, setShowAdDialog] = useState(false);
   const navigate = useNavigate();
@@ -34,11 +34,16 @@ export default function Cart() {
   
   const handleCheckout = () => {
     if (!isAuthenticated) {
-      navigate('/login');
+      navigate('/login', { state: { from: '/checkout' } });
       return;
     }
     
     navigate('/checkout');
+  };
+
+  const handleWatchAdComplete = () => {
+    waiveDeliveryFee();
+    setShowAdDialog(false);
   };
 
   return (
@@ -239,7 +244,15 @@ export default function Cart() {
       {/* Ad Dialog */}
       <Dialog open={showAdDialog} onOpenChange={setShowAdDialog}>
         <DialogContent className="sm:max-w-md">
-          <AdPlayer onClose={() => setShowAdDialog(false)} />
+          <DialogHeader>
+            <DialogTitle>Watch Ad to Waive Delivery Fee</DialogTitle>
+            <DialogDescription>
+              Watch this short advertisement to have your delivery fee waived.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-4">
+            <AdPlayer onClose={handleWatchAdComplete} />
+          </div>
         </DialogContent>
       </Dialog>
     </div>

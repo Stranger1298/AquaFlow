@@ -51,7 +51,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
 
   // Load orders from localStorage
   useEffect(() => {
-    const savedOrders = localStorage.getItem('hydrate_orders');
+    const savedOrders = localStorage.getItem('aquaflow_orders');
     if (savedOrders) {
       setOrders(JSON.parse(savedOrders));
     }
@@ -59,20 +59,8 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
 
   // Save orders to localStorage
   useEffect(() => {
-    localStorage.setItem('hydrate_orders', JSON.stringify(orders));
+    localStorage.setItem('aquaflow_orders', JSON.stringify(orders));
   }, [orders]);
-
-  // Get orders for current customer
-  const customerOrders = (customerId: string) => {
-    return orders.filter(order => order.customerId === customerId);
-  };
-
-  // Get orders for current vendor
-  const vendorOrders = (vendorId: string) => {
-    return orders.filter(order => 
-      order.items.some(item => item.vendorId === vendorId)
-    );
-  };
 
   // Create a new order
   const createOrder = async (
@@ -176,8 +164,8 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
     <OrderContext.Provider
       value={{
         orders,
-        customerOrders: [],
-        vendorOrders: [],
+        customerOrders: orders,
+        vendorOrders: orders,
         isLoading,
         error,
         createOrder,

@@ -1,5 +1,4 @@
 
-import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +23,7 @@ export default function Index() {
                 Fresh Water Delivered to Your Doorstep
               </h1>
               <p className="mt-6 text-lg leading-8 mx-auto max-w-2xl">
-                Hydrate Bazaar connects you with local water vendors offering a variety of high-quality water products. 
+                AquaFlow connects you with local water vendors offering a variety of high-quality water products. 
                 Order now and enjoy quick delivery to your home or office.
               </p>
               <div className="mt-10 flex items-center justify-center gap-x-6">
@@ -142,7 +141,7 @@ export default function Index() {
         <div className="container mx-auto text-center">
           <h2 className="text-3xl font-bold text-gray-800 mb-4">Ready to Get Started?</h2>
           <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
-            Join Hydrate Bazaar today and start enjoying convenient water delivery services.
+            Join AquaFlow today and start enjoying convenient water delivery services.
           </p>
           <Button 
             size="lg" 
@@ -159,7 +158,7 @@ export default function Index() {
         <div className="container mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
-              <h3 className="font-semibold text-lg mb-4">Hydrate Bazaar</h3>
+              <h3 className="font-semibold text-lg mb-4">AquaFlow</h3>
               <p className="text-gray-400">
                 The premier marketplace for water delivery services.
               </p>
@@ -210,7 +209,7 @@ export default function Index() {
           </div>
           
           <div className="mt-8 pt-8 border-t border-gray-700 text-center text-gray-400">
-            <p>© {new Date().getFullYear()} Hydrate Bazaar. All rights reserved.</p>
+            <p>© {new Date().getFullYear()} AquaFlow. All rights reserved.</p>
           </div>
         </div>
       </footer>

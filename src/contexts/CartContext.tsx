@@ -51,12 +51,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
   // Load cart from localStorage
   useEffect(() => {
-    const savedCart = localStorage.getItem('hydrate_cart');
+    const savedCart = localStorage.getItem('aquaflow_cart');
     if (savedCart) {
       setItems(JSON.parse(savedCart));
     }
     
-    const savedWaiver = localStorage.getItem('hydrate_waived_fee');
+    const savedWaiver = localStorage.getItem('aquaflow_waived_fee');
     if (savedWaiver) {
       setIsDeliveryFeeWaived(JSON.parse(savedWaiver));
     }
@@ -64,12 +64,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
   // Save cart to localStorage
   useEffect(() => {
-    localStorage.setItem('hydrate_cart', JSON.stringify(items));
+    localStorage.setItem('aquaflow_cart', JSON.stringify(items));
   }, [items]);
 
   // Save waiver status to localStorage
   useEffect(() => {
-    localStorage.setItem('hydrate_waived_fee', JSON.stringify(isDeliveryFeeWaived));
+    localStorage.setItem('aquaflow_waived_fee', JSON.stringify(isDeliveryFeeWaived));
   }, [isDeliveryFeeWaived]);
 
   // Calculate cart summary
