@@ -25,16 +25,24 @@ import { NavigationBar } from '@/components/NavigationBar';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrders } from '@/contexts/OrderContext';
+import { useToast } from "@/components/ui/use-toast";
 
 export default function Checkout() {
   const { items, summary, clearCart } = useCart();
   const { user } = useAuth();
   const { createOrder } = useOrders();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Card payment details
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [cardName, setCardName] = useState('');
 
   // Redirect to cart if there are no items
   if (items.length === 0) {
@@ -42,9 +50,59 @@ export default function Checkout() {
     return null;
   }
 
+  const validateCardDetails = () => {
+    if (paymentMethod === 'card') {
+      if (!cardNumber || cardNumber.length < 16) {
+        toast({
+          title: "Invalid card number",
+          description: "Please enter a valid card number",
+          variant: "destructive"
+        });
+        return false;
+      }
+      
+      if (!cardExpiry || !cardExpiry.includes('/')) {
+        toast({
+          title: "Invalid expiry date",
+          description: "Please enter a valid expiry date (MM/YY)",
+          variant: "destructive"
+        });
+        return false;
+      }
+      
+      if (!cardCvc || cardCvc.length < 3) {
+        toast({
+          title: "Invalid CVC",
+          description: "Please enter a valid CVC code",
+          variant: "destructive"
+        });
+        return false;
+      }
+      
+      if (!cardName) {
+        toast({
+          title: "Missing cardholder name",
+          description: "Please enter the cardholder name",
+          variant: "destructive"
+        });
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
   const handlePlaceOrder = async () => {
     if (!deliveryAddress) {
-      alert('Please enter a delivery address');
+      toast({
+        title: "Missing delivery address",
+        description: "Please enter a delivery address",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!validateCardDetails()) {
       return;
     }
 
@@ -55,6 +113,10 @@ export default function Checkout() {
         navigate('/login');
         return;
       }
+
+      // Process payment (simulated)
+      // In a real app, this would call a payment processing service
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       // Create new order
       const order = await createOrder(
@@ -69,14 +131,53 @@ export default function Checkout() {
       // Clear the cart
       clearCart();
 
+      // Show success message
+      toast({
+        title: "Payment successful",
+        description: "Your order has been placed successfully",
+      });
+
       // Navigate to order confirmation
       navigate(`/order-confirmation/${order.id}`);
     } catch (error) {
       console.error('Error placing order:', error);
-      alert('There was an error placing your order. Please try again.');
+      toast({
+        title: "Payment failed",
+        description: "There was an error processing your payment. Please try again.",
+        variant: "destructive"
+      });
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Format card number with spaces
+  const formatCardNumber = (value: string) => {
+    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    const matches = v.match(/\d{4,16}/g);
+    const match = matches && matches[0] || '';
+    const parts = [];
+
+    for (let i = 0, len = match.length; i < len; i += 4) {
+      parts.push(match.substring(i, i + 4));
+    }
+
+    if (parts.length) {
+      return parts.join(' ');
+    } else {
+      return value;
+    }
+  };
+
+  // Format card expiry date
+  const formatCardExpiry = (value: string) => {
+    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    
+    if (v.length > 2) {
+      return `${v.substring(0, 2)}/${v.substring(2, 4)}`;
+    }
+    
+    return v;
   };
 
   return (
@@ -132,18 +233,46 @@ export default function Checkout() {
                 {paymentMethod === 'card' && (
                   <div className="space-y-4 mt-4">
                     <div className="space-y-2">
+                      <Label htmlFor="cardName">Cardholder Name</Label>
+                      <Input 
+                        id="cardName" 
+                        placeholder="John Doe" 
+                        value={cardName}
+                        onChange={(e) => setCardName(e.target.value)}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
                       <Label htmlFor="cardNumber">Card Number</Label>
-                      <Input id="cardNumber" placeholder="1234 5678 9012 3456" />
+                      <Input 
+                        id="cardNumber" 
+                        placeholder="1234 5678 9012 3456" 
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                        maxLength={19}
+                      />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="expiry">Expiry Date</Label>
-                        <Input id="expiry" placeholder="MM/YY" />
+                        <Input 
+                          id="expiry" 
+                          placeholder="MM/YY" 
+                          value={cardExpiry}
+                          onChange={(e) => setCardExpiry(formatCardExpiry(e.target.value))}
+                          maxLength={5}
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="cvc">CVC</Label>
-                        <Input id="cvc" placeholder="123" />
+                        <Input 
+                          id="cvc" 
+                          placeholder="123" 
+                          value={cardCvc}
+                          onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, ''))}
+                          maxLength={4}
+                        />
                       </div>
                     </div>
                   </div>
@@ -203,7 +332,14 @@ export default function Checkout() {
                   onClick={handlePlaceOrder}
                   disabled={isProcessing || !deliveryAddress}
                 >
-                  {isProcessing ? "Processing..." : "Place Order"}
+                  {isProcessing ? (
+                    <div className="flex items-center">
+                      <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2"></div>
+                      Processing...
+                    </div>
+                  ) : (
+                    `Pay ${summary.total.toFixed(2)} USD`
+                  )}
                 </Button>
               </CardFooter>
             </Card>

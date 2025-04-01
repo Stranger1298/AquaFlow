@@ -9,6 +9,95 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      full_orders: {
+        Row: {
+          created_at: string
+          customer_name: string
+          delivery_address: string
+          delivery_fee: number
+          id: string
+          payment_method: string
+          status: string
+          subtotal: number
+          total: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          customer_name: string
+          delivery_address: string
+          delivery_fee: number
+          id?: string
+          payment_method: string
+          status?: string
+          subtotal: number
+          total: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          customer_name?: string
+          delivery_address?: string
+          delivery_fee?: number
+          id?: string
+          payment_method?: string
+          status?: string
+          subtotal?: number
+          total?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      order_items: {
+        Row: {
+          amount: number
+          id: string
+          image: string | null
+          order_id: string
+          price: number
+          product_id: string
+          product_name: string
+          quantity: number
+          vendor_id: string
+          vendor_name: string
+        }
+        Insert: {
+          amount: number
+          id?: string
+          image?: string | null
+          order_id: string
+          price: number
+          product_id: string
+          product_name: string
+          quantity: number
+          vendor_id: string
+          vendor_name: string
+        }
+        Update: {
+          amount?: number
+          id?: string
+          image?: string | null
+          order_id?: string
+          price?: number
+          product_id?: string
+          product_name?: string
+          quantity?: number
+          vendor_id?: string
+          vendor_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "full_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           created_at: string
@@ -65,6 +154,47 @@ export type Database = {
             columns: ["vendor_id"]
             isOneToOne: false
             referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          order_id: string
+          payment_method: string
+          status: string
+          transaction_data: Json | null
+          transaction_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          order_id: string
+          payment_method: string
+          status?: string
+          transaction_data?: Json | null
+          transaction_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          order_id?: string
+          payment_method?: string
+          status?: string
+          transaction_data?: Json | null
+          transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_transactions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "full_orders"
             referencedColumns: ["id"]
           },
         ]

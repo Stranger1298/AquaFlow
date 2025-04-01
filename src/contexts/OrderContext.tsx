@@ -1,7 +1,9 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from '@/contexts/AuthContext';
 import { CartItem, CartSummary } from './CartContext';
+import { supabase } from "@/integrations/supabase/client";
 
 // Types
 export type OrderStatus = 'pending' | 'processing' | 'delivering' | 'completed' | 'cancelled';
@@ -48,19 +50,15 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  // Load orders from localStorage
+  // Load orders from localStorage (legacy support)
   useEffect(() => {
     const savedOrders = localStorage.getItem('aquaflow_orders');
     if (savedOrders) {
       setOrders(JSON.parse(savedOrders));
     }
   }, []);
-
-  // Save orders to localStorage
-  useEffect(() => {
-    localStorage.setItem('aquaflow_orders', JSON.stringify(orders));
-  }, [orders]);
 
   // Create a new order
   const createOrder = async (
@@ -73,74 +71,130 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
   ): Promise<Order> => {
     setIsLoading(true);
     
-    // Simulate API call
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const now = new Date().toISOString();
-        const newOrder: Order = {
-          id: `order_${Date.now()}`,
-          customerId,
-          customerName,
-          items,
-          summary,
+    try {
+      // Create order in Supabase
+      const { data: orderData, error: orderError } = await supabase
+        .from('full_orders')
+        .insert({
+          user_id: customerId,
+          customer_name: customerName,
+          delivery_address: deliveryAddress,
+          payment_method: paymentMethod,
           status: 'pending',
-          createdAt: now,
-          updatedAt: now,
-          deliveryAddress,
-          paymentMethod,
-        };
-        
-        setOrders(prevOrders => [...prevOrders, newOrder]);
-        
-        toast({
-          title: "Order placed",
-          description: `Your order #${newOrder.id.slice(-5)} has been placed successfully`,
+          subtotal: summary.subtotal,
+          delivery_fee: summary.deliveryFee,
+          total: summary.total
+        })
+        .select()
+        .single();
+      
+      if (orderError) throw orderError;
+      
+      // Create order items in Supabase
+      const orderItems = items.map(item => ({
+        order_id: orderData.id,
+        product_id: item.productId,
+        product_name: item.name,
+        quantity: item.quantity,
+        amount: item.amount,
+        price: item.price,
+        vendor_id: item.vendorId,
+        vendor_name: item.vendorName,
+        image: item.image
+      }));
+      
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems);
+      
+      if (itemsError) throw itemsError;
+      
+      // Create payment transaction record
+      const { error: paymentError } = await supabase
+        .from('payment_transactions')
+        .insert({
+          order_id: orderData.id,
+          payment_method: paymentMethod,
+          amount: summary.total,
+          status: 'completed', // For simplicity, mark as completed
+          transaction_id: `tr_${Date.now()}`,
+          transaction_data: { payment_details: 'Completed with mock payment' }
         });
-        
-        setIsLoading(false);
-        resolve(newOrder);
-      }, 1000);
-    });
+      
+      if (paymentError) throw paymentError;
+      
+      // Create the order object to return
+      const now = new Date().toISOString();
+      const newOrder: Order = {
+        id: orderData.id,
+        customerId,
+        customerName,
+        items,
+        summary,
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now,
+        deliveryAddress,
+        paymentMethod,
+      };
+      
+      // Update local state for backward compatibility
+      setOrders(prevOrders => [...prevOrders, newOrder]);
+      
+      toast({
+        title: "Order placed",
+        description: `Your order #${newOrder.id.slice(-8)} has been placed successfully`,
+      });
+      
+      return newOrder;
+    } catch (error) {
+      console.error('Error creating order:', error);
+      toast({
+        title: "Order failed",
+        description: "There was an error placing your order. Please try again.",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Update order status
   const updateOrderStatus = async (orderId: string, status: OrderStatus): Promise<void> => {
     setIsLoading(true);
     
-    // Simulate API call
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        const orderIndex = orders.findIndex(order => order.id === orderId);
-        
-        if (orderIndex === -1) {
-          toast({
-            title: "Update failed",
-            description: "Order not found",
-            variant: "destructive",
-          });
-          setIsLoading(false);
-          reject(new Error('Order not found'));
-          return;
-        }
-        
-        const updatedOrders = [...orders];
-        updatedOrders[orderIndex] = {
-          ...updatedOrders[orderIndex],
-          status,
-          updatedAt: new Date().toISOString(),
-        };
-        
-        setOrders(updatedOrders);
-        
-        toast({
-          title: "Order updated",
-          description: `Order #${orderId.slice(-5)} status changed to ${status}`,
-        });
-        
-        setIsLoading(false);
-        resolve();
-      }, 500);
-    });
+    try {
+      // Update order status in Supabase
+      const { error } = await supabase
+        .from('full_orders')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', orderId);
+      
+      if (error) throw error;
+      
+      // Update local state for backward compatibility
+      setOrders(prevOrders => prevOrders.map(order => 
+        order.id === orderId 
+          ? { ...order, status, updatedAt: new Date().toISOString() } 
+          : order
+      ));
+      
+      toast({
+        title: "Order updated",
+        description: `Order #${orderId.slice(-8)} status changed to ${status}`,
+      });
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      toast({
+        title: "Update failed",
+        description: "Failed to update order status. Please try again.",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Get orders by customer
