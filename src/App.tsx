@@ -18,8 +18,16 @@ import Register from "./pages/Register";
 import VendorDashboard from "./pages/vendor/Dashboard";
 import NotFound from "./pages/NotFound";
 
-// Create a new QueryClient instance
-const queryClient = new QueryClient();
+// Create a client with better caching and stale-while-revalidate config
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60 * 1000, // 1 minute
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => {
   return (
