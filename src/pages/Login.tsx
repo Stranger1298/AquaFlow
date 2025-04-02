@@ -41,6 +41,7 @@ export default function Login() {
       await login(email, password, role);
       navigate(role === 'vendor' ? '/vendor/dashboard' : redirectTo);
     } catch (err: any) {
+      console.error('Login error:', err);
       setError(err.message || 'Login failed. Please check your credentials and try again.');
     } finally {
       setIsLoading(false);

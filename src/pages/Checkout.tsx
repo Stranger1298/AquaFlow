@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -108,15 +107,18 @@ export default function Checkout() {
         return;
       }
 
+      // Simulate successful payment for any card number
+      const paymentSuccess = true;
+
       // Create order in Supabase directly
       const { data: orderData, error: orderError } = await supabase
         .from('full_orders')
         .insert({
           user_id: user.id,
-          customer_name: user.name,
+          customer_name: user.name || 'Customer',
           delivery_address: deliveryAddress,
           payment_method: paymentMethod,
-          status: 'pending',
+          status: paymentSuccess ? 'processing' : 'payment_failed',
           subtotal: summary.subtotal,
           delivery_fee: summary.deliveryFee,
           total: summary.total
@@ -125,6 +127,7 @@ export default function Checkout() {
         .single();
       
       if (orderError) {
+        console.error('Order creation error:', orderError);
         throw new Error(`Failed to create order: ${orderError.message}`);
       }
       
@@ -146,68 +149,29 @@ export default function Checkout() {
         .insert(orderItems);
       
       if (itemsError) {
+        console.error('Order items creation error:', itemsError);
         throw new Error(`Failed to create order items: ${itemsError.message}`);
       }
       
-      // Process payment (simulated)
-      // In a real app, this would call a payment processing service
-      let paymentSuccess = true;
-      
-      // Simulate payment processing - using test card numbers to determine success/failure
-      // If card number starts with '4242', payment succeeds, otherwise it fails
-      if (paymentMethod === 'card') {
-        const testCardNumber = cardNumber.replace(/\s/g, '');
-        paymentSuccess = testCardNumber.startsWith('4242');
-        
-        // Update order status based on payment result
-        const newStatus = paymentSuccess ? 'processing' : 'payment_failed';
-        
-        await supabase
-          .from('full_orders')
-          .update({ status: newStatus })
-          .eq('id', orderData.id);
-        
-        // Create payment transaction record
-        await supabase
-          .from('payment_transactions')
-          .insert({
-            order_id: orderData.id,
-            payment_method: paymentMethod,
-            amount: summary.total,
-            status: paymentSuccess ? 'completed' : 'failed',
-            transaction_id: `tr_${Date.now()}`,
-            transaction_data: { 
-              card_last4: testCardNumber.slice(-4),
-              payment_details: paymentSuccess ? 'Payment successful' : 'Payment failed'
-            }
-          });
-      } else {
-        // For cash payments, update order status to processing
-        await supabase
-          .from('full_orders')
-          .update({ status: 'processing' })
-          .eq('id', orderData.id);
-          
-        // Create payment transaction record for cash payment
-        await supabase
-          .from('payment_transactions')
-          .insert({
-            order_id: orderData.id,
-            payment_method: 'cash',
-            amount: summary.total,
-            status: 'pending',
-            transaction_data: { payment_details: 'Cash on delivery' }
-          });
-      }
-      
-      if (!paymentSuccess) {
-        throw new Error("Payment failed. Please check your card details and try again.");
-      }
+      // Create payment transaction record
+      await supabase
+        .from('payment_transactions')
+        .insert({
+          order_id: orderData.id,
+          payment_method: paymentMethod,
+          amount: summary.total,
+          status: paymentSuccess ? 'completed' : 'failed',
+          transaction_id: `tr_${Date.now()}`,
+          transaction_data: { 
+            card_last4: paymentMethod === 'card' ? cardNumber.slice(-4) : null,
+            payment_details: paymentSuccess ? 'Payment successful' : 'Payment failed'
+          }
+        });
 
-      // Create order in context for backward compatibility
-      const order = await createOrder(
+      // Use the createOrder method for backward compatibility
+      await createOrder(
         user.id,
-        user.name,
+        user.name || 'Customer',
         items,
         summary,
         deliveryAddress,
@@ -230,7 +194,7 @@ export default function Checkout() {
       setPaymentError(error.message || "There was an error processing your payment. Please try again.");
       
       toast({
-        title: "Payment failed",
+        title: "Order placement failed",
         description: error.message || "There was an error processing your payment. Please try again.",
         variant: "destructive"
       });
@@ -348,7 +312,7 @@ export default function Checkout() {
                         maxLength={19}
                       />
                       <p className="text-xs text-gray-500">
-                        Test card: 4242 4242 4242 4242 (success) or any other number (failure)
+                        Any card number will work for testing
                       </p>
                     </div>
 

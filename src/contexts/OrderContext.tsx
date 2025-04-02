@@ -52,13 +52,93 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Load orders from localStorage (legacy support)
+  // Load orders from both localStorage and Supabase
   useEffect(() => {
-    const savedOrders = localStorage.getItem('aquaflow_orders');
-    if (savedOrders) {
-      setOrders(JSON.parse(savedOrders));
-    }
-  }, []);
+    const fetchOrders = async () => {
+      if (!user) return;
+      
+      setIsLoading(true);
+      try {
+        // First load from localStorage for backward compatibility
+        const savedOrders = localStorage.getItem('aquaflow_orders');
+        let allOrders = savedOrders ? JSON.parse(savedOrders) : [];
+        
+        // Then fetch from Supabase
+        const { data: supabaseOrders, error } = await supabase
+          .from('full_orders')
+          .select(`
+            id,
+            status,
+            subtotal,
+            delivery_fee,
+            total,
+            created_at,
+            updated_at,
+            user_id,
+            customer_name,
+            delivery_address,
+            payment_method,
+            order_items (*)
+          `)
+          .eq('user_id', user.id);
+        
+        if (error) throw error;
+        
+        // Transform Supabase data to match our Order interface
+        if (supabaseOrders && supabaseOrders.length > 0) {
+          const transformedOrders = supabaseOrders.map(order => {
+            const orderItems = order.order_items.map((item: any) => ({
+              id: item.id,
+              productId: item.product_id,
+              name: item.product_name,
+              price: item.price,
+              amount: item.amount,
+              quantity: item.quantity,
+              vendorId: item.vendor_id,
+              vendorName: item.vendor_name,
+              image: item.image || null
+            }));
+            
+            return {
+              id: order.id,
+              customerId: order.user_id,
+              customerName: order.customer_name,
+              items: orderItems,
+              summary: {
+                subtotal: order.subtotal,
+                deliveryFee: order.delivery_fee,
+                total: order.total,
+                isDeliveryFeeWaived: false
+              },
+              status: order.status as OrderStatus,
+              createdAt: order.created_at,
+              updatedAt: order.updated_at,
+              deliveryAddress: order.delivery_address,
+              paymentMethod: order.payment_method
+            };
+          });
+          
+          // Merge and deduplicate orders from both sources
+          const orderIds = new Set(allOrders.map((o: Order) => o.id));
+          for (const order of transformedOrders) {
+            if (!orderIds.has(order.id)) {
+              allOrders.push(order);
+              orderIds.add(order.id);
+            }
+          }
+        }
+        
+        setOrders(allOrders);
+      } catch (err) {
+        console.error("Error fetching orders:", err);
+        setError("Failed to load orders");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchOrders();
+  }, [user]);
 
   // Create a new order
   const createOrder = async (
