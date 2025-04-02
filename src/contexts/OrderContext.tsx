@@ -6,7 +6,7 @@ import { CartItem, CartSummary } from './CartContext';
 import { supabase } from "@/integrations/supabase/client";
 
 // Types
-export type OrderStatus = 'pending' | 'processing' | 'delivering' | 'completed' | 'cancelled';
+export type OrderStatus = 'pending' | 'processing' | 'delivering' | 'completed' | 'cancelled' | 'payment_failed';
 
 export interface Order {
   id: string;
@@ -59,6 +59,8 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
       
       setIsLoading(true);
       try {
+        console.log('Fetching orders for user:', user.id);
+        
         // First load from localStorage for backward compatibility
         const savedOrders = localStorage.getItem('aquaflow_orders');
         let allOrders = savedOrders ? JSON.parse(savedOrders) : [];
@@ -82,7 +84,12 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
           `)
           .eq('user_id', user.id);
         
-        if (error) throw error;
+        if (error) {
+          console.error('Error fetching orders:', error);
+          throw error;
+        }
+        
+        console.log('Retrieved orders from Supabase:', supabaseOrders);
         
         // Transform Supabase data to match our Order interface
         if (supabaseOrders && supabaseOrders.length > 0) {
@@ -108,7 +115,8 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
                 subtotal: order.subtotal,
                 deliveryFee: order.delivery_fee,
                 total: order.total,
-                isDeliveryFeeWaived: false
+                isDeliveryFeeWaived: order.delivery_fee === 0,
+                itemCount: orderItems.reduce((sum: number, item: any) => sum + item.amount, 0)
               },
               status: order.status as OrderStatus,
               createdAt: order.created_at,
@@ -117,6 +125,8 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
               paymentMethod: order.payment_method
             };
           });
+          
+          console.log('Transformed orders:', transformedOrders);
           
           // Merge and deduplicate orders from both sources
           const orderIds = new Set(allOrders.map((o: Order) => o.id));
@@ -152,6 +162,8 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     
     try {
+      console.log('Creating order with items:', items);
+      
       // Create order in Supabase
       const { data: orderData, error: orderError } = await supabase
         .from('full_orders')
@@ -168,7 +180,12 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         .select()
         .single();
       
-      if (orderError) throw orderError;
+      if (orderError) {
+        console.error('Order creation error:', orderError);
+        throw orderError;
+      }
+      
+      console.log('Created order:', orderData);
       
       // Create order items in Supabase
       const orderItems = items.map(item => ({
@@ -187,7 +204,10 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         .from('order_items')
         .insert(orderItems);
       
-      if (itemsError) throw itemsError;
+      if (itemsError) {
+        console.error('Order items creation error:', itemsError);
+        throw itemsError;
+      }
       
       // Create payment transaction record
       const { error: paymentError } = await supabase
@@ -196,12 +216,15 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
           order_id: orderData.id,
           payment_method: paymentMethod,
           amount: summary.total,
-          status: 'completed', // For simplicity, mark as completed
+          status: paymentMethod === 'cash' ? 'cash_on_delivery' : 'completed',
           transaction_id: `tr_${Date.now()}`,
-          transaction_data: { payment_details: 'Completed with mock payment' }
+          transaction_data: { payment_details: paymentMethod === 'cash' ? 'Cash on delivery' : 'Payment processed' }
         });
       
-      if (paymentError) throw paymentError;
+      if (paymentError) {
+        console.error('Payment transaction error:', paymentError);
+        throw paymentError;
+      }
       
       // Create the order object to return
       const now = new Date().toISOString();

@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -110,7 +111,7 @@ export default function Checkout() {
       // Simulate successful payment for any card number
       const paymentSuccess = true;
 
-      // Create order in Supabase directly
+      // Create order in Supabase
       const { data: orderData, error: orderError } = await supabase
         .from('full_orders')
         .insert({
@@ -131,10 +132,12 @@ export default function Checkout() {
         throw new Error(`Failed to create order: ${orderError.message}`);
       }
       
-      // Create order items in Supabase
+      console.log('Created order:', orderData);
+      
+      // Create order items in Supabase - Fixed for UUID type
       const orderItems = items.map(item => ({
         order_id: orderData.id,
-        product_id: item.productId,
+        product_id: item.productId, // Ensure this is a valid UUID
         product_name: item.name,
         quantity: item.quantity,
         amount: item.amount,
@@ -154,21 +157,26 @@ export default function Checkout() {
       }
       
       // Create payment transaction record
-      await supabase
+      const { error: paymentError } = await supabase
         .from('payment_transactions')
         .insert({
           order_id: orderData.id,
           payment_method: paymentMethod,
           amount: summary.total,
-          status: paymentSuccess ? 'completed' : 'failed',
+          status: paymentMethod === 'cash' ? 'cash_on_delivery' : (paymentSuccess ? 'completed' : 'failed'),
           transaction_id: `tr_${Date.now()}`,
           transaction_data: { 
             card_last4: paymentMethod === 'card' ? cardNumber.slice(-4) : null,
-            payment_details: paymentSuccess ? 'Payment successful' : 'Payment failed'
+            payment_details: paymentMethod === 'cash' ? 'Cash on delivery' : 'Payment successful'
           }
         });
+        
+      if (paymentError) {
+        console.error('Payment transaction error:', paymentError);
+        throw new Error(`Failed to create payment transaction: ${paymentError.message}`);
+      }
 
-      // Use the createOrder method for backward compatibility
+      // Call createOrder for context update and backward compatibility
       await createOrder(
         user.id,
         user.name || 'Customer',
@@ -183,19 +191,21 @@ export default function Checkout() {
 
       // Show success message
       toast({
-        title: "Payment successful",
-        description: "Your order has been placed successfully",
+        title: "Order placed successfully",
+        description: paymentMethod === 'cash' 
+          ? "Your cash on delivery order has been placed" 
+          : "Your payment was successful",
       });
 
       // Navigate to order confirmation
       navigate(`/order-confirmation/${orderData.id}`);
     } catch (error: any) {
       console.error('Error placing order:', error);
-      setPaymentError(error.message || "There was an error processing your payment. Please try again.");
+      setPaymentError(error.message || "There was an error processing your order. Please try again.");
       
       toast({
         title: "Order placement failed",
-        description: error.message || "There was an error processing your payment. Please try again.",
+        description: error.message || "There was an error processing your order. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -401,7 +411,9 @@ export default function Checkout() {
                       Processing...
                     </div>
                   ) : (
-                    `Pay ${summary.total.toFixed(2)} USD`
+                    paymentMethod === 'cash' 
+                      ? `Place Order ($${summary.total.toFixed(2)})` 
+                      : `Pay $${summary.total.toFixed(2)}`
                   )}
                 </Button>
               </CardFooter>
