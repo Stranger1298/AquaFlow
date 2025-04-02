@@ -21,28 +21,39 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { AlertCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { NavigationBar } from '@/components/NavigationBar';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrders } from '@/contexts/OrderContext';
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Checkout() {
   const { items, summary, clearCart } = useCart();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { createOrder } = useOrders();
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Form state
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   
   // Card payment details
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
   const [cardName, setCardName] = useState('');
+
+  // Redirect if not authenticated
+  if (!isAuthenticated) {
+    navigate('/login?redirectTo=/checkout');
+    return null;
+  }
 
   // Redirect to cart if there are no items
   if (items.length === 0) {
@@ -51,40 +62,31 @@ export default function Checkout() {
   }
 
   const validateCardDetails = () => {
+    setPaymentError(null);
+    
+    if (!deliveryAddress) {
+      setPaymentError("Please enter a delivery address");
+      return false;
+    }
+    
     if (paymentMethod === 'card') {
-      if (!cardNumber || cardNumber.length < 16) {
-        toast({
-          title: "Invalid card number",
-          description: "Please enter a valid card number",
-          variant: "destructive"
-        });
+      if (!cardNumber || cardNumber.replace(/\s/g, '').length < 16) {
+        setPaymentError("Please enter a valid card number");
         return false;
       }
       
       if (!cardExpiry || !cardExpiry.includes('/')) {
-        toast({
-          title: "Invalid expiry date",
-          description: "Please enter a valid expiry date (MM/YY)",
-          variant: "destructive"
-        });
+        setPaymentError("Please enter a valid expiry date (MM/YY)");
         return false;
       }
       
       if (!cardCvc || cardCvc.length < 3) {
-        toast({
-          title: "Invalid CVC",
-          description: "Please enter a valid CVC code",
-          variant: "destructive"
-        });
+        setPaymentError("Please enter a valid CVC code");
         return false;
       }
       
       if (!cardName) {
-        toast({
-          title: "Missing cardholder name",
-          description: "Please enter the cardholder name",
-          variant: "destructive"
-        });
+        setPaymentError("Please enter the cardholder name");
         return false;
       }
     }
@@ -93,35 +95,91 @@ export default function Checkout() {
   };
 
   const handlePlaceOrder = async () => {
-    if (!deliveryAddress) {
-      toast({
-        title: "Missing delivery address",
-        description: "Please enter a delivery address",
-        variant: "destructive"
-      });
-      return;
-    }
-
     if (!validateCardDetails()) {
       return;
     }
 
     setIsProcessing(true);
+    setPaymentError(null);
 
     try {
       if (!user) {
-        navigate('/login');
+        navigate('/login?redirectTo=/checkout');
         return;
       }
 
-      // Process payment (simulated)
-      // In a real app, this would call a payment processing service
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Simulate successful payment for any card number
+      const paymentSuccess = true;
 
-      // Create new order
-      const order = await createOrder(
+      // Create order in Supabase
+      const { data: orderData, error: orderError } = await supabase
+        .from('full_orders')
+        .insert({
+          user_id: user.id,
+          customer_name: user.name || 'Customer',
+          delivery_address: deliveryAddress,
+          payment_method: paymentMethod,
+          status: paymentSuccess ? 'processing' : 'payment_failed',
+          subtotal: summary.subtotal,
+          delivery_fee: summary.deliveryFee,
+          total: summary.total
+        })
+        .select()
+        .single();
+      
+      if (orderError) {
+        console.error('Order creation error:', orderError);
+        throw new Error(`Failed to create order: ${orderError.message}`);
+      }
+      
+      console.log('Created order:', orderData);
+      
+      // Create order items in Supabase - Fixed for UUID type
+      const orderItems = items.map(item => ({
+        order_id: orderData.id,
+        product_id: item.productId, // Ensure this is a valid UUID
+        product_name: item.name,
+        quantity: item.quantity,
+        amount: item.amount,
+        price: item.price,
+        vendor_id: item.vendorId,
+        vendor_name: item.vendorName,
+        image: item.image
+      }));
+      
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems);
+      
+      if (itemsError) {
+        console.error('Order items creation error:', itemsError);
+        throw new Error(`Failed to create order items: ${itemsError.message}`);
+      }
+      
+      // Create payment transaction record
+      const { error: paymentError } = await supabase
+        .from('payment_transactions')
+        .insert({
+          order_id: orderData.id,
+          payment_method: paymentMethod,
+          amount: summary.total,
+          status: paymentMethod === 'cash' ? 'cash_on_delivery' : (paymentSuccess ? 'completed' : 'failed'),
+          transaction_id: `tr_${Date.now()}`,
+          transaction_data: { 
+            card_last4: paymentMethod === 'card' ? cardNumber.slice(-4) : null,
+            payment_details: paymentMethod === 'cash' ? 'Cash on delivery' : 'Payment successful'
+          }
+        });
+        
+      if (paymentError) {
+        console.error('Payment transaction error:', paymentError);
+        throw new Error(`Failed to create payment transaction: ${paymentError.message}`);
+      }
+
+      // Call createOrder for context update and backward compatibility
+      await createOrder(
         user.id,
-        user.name,
+        user.name || 'Customer',
         items,
         summary,
         deliveryAddress,
@@ -133,17 +191,21 @@ export default function Checkout() {
 
       // Show success message
       toast({
-        title: "Payment successful",
-        description: "Your order has been placed successfully",
+        title: "Order placed successfully",
+        description: paymentMethod === 'cash' 
+          ? "Your cash on delivery order has been placed" 
+          : "Your payment was successful",
       });
 
       // Navigate to order confirmation
-      navigate(`/order-confirmation/${order.id}`);
-    } catch (error) {
+      navigate(`/order-confirmation/${orderData.id}`);
+    } catch (error: any) {
       console.error('Error placing order:', error);
+      setPaymentError(error.message || "There was an error processing your order. Please try again.");
+      
       toast({
-        title: "Payment failed",
-        description: "There was an error processing your payment. Please try again.",
+        title: "Order placement failed",
+        description: error.message || "There was an error processing your order. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -186,6 +248,14 @@ export default function Checkout() {
 
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-gray-800 mb-6">Checkout</h1>
+
+        {paymentError && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Payment failed</AlertTitle>
+            <AlertDescription>{paymentError}</AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Delivery Information */}
@@ -251,6 +321,9 @@ export default function Checkout() {
                         onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                         maxLength={19}
                       />
+                      <p className="text-xs text-gray-500">
+                        Any card number will work for testing
+                      </p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -338,7 +411,9 @@ export default function Checkout() {
                       Processing...
                     </div>
                   ) : (
-                    `Pay ${summary.total.toFixed(2)} USD`
+                    paymentMethod === 'cash' 
+                      ? `Place Order ($${summary.total.toFixed(2)})` 
+                      : `Pay $${summary.total.toFixed(2)}`
                   )}
                 </Button>
               </CardFooter>

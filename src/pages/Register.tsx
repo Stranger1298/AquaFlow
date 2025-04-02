@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 import { useAuth, UserRole } from '@/contexts/AuthContext';
 import { NavigationBar } from '@/components/NavigationBar';
 
@@ -17,10 +19,14 @@ export default function Register() {
   const [role, setRole] = useState<UserRole>('customer');
   const [isLoading, setIsLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const { register } = useAuth();
   const navigate = useNavigate();
 
   const validateForm = () => {
+    setPasswordError('');
+    setError(null);
+    
     if (password !== confirmPassword) {
       setPasswordError('Passwords do not match');
       return false;
@@ -31,7 +37,16 @@ export default function Register() {
       return false;
     }
     
-    setPasswordError('');
+    if (!name.trim()) {
+      setError('Name is required');
+      return false;
+    }
+    
+    if (!email.trim()) {
+      setError('Email is required');
+      return false;
+    }
+    
     return true;
   };
 
@@ -47,8 +62,8 @@ export default function Register() {
     try {
       await register(name, email, password, role);
       navigate(role === 'vendor' ? '/vendor/dashboard' : '/');
-    } catch (error) {
-      console.error('Registration failed:', error);
+    } catch (err: any) {
+      setError(err.message || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -67,6 +82,14 @@ export default function Register() {
           </CardHeader>
           
           <CardContent>
+            {error && (
+              <Alert variant="destructive" className="mb-6">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            
             <Tabs defaultValue="customer" className="w-full" onValueChange={(value) => setRole(value as UserRole)}>
               <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="customer">Customer</TabsTrigger>
