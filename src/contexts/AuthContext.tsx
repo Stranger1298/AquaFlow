@@ -33,7 +33,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Check for saved user on mount and set up auth listener
   useEffect(() => {
-    // Check for existing session
+    // Subscribe to auth changes first to prevent missing events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          // Use setTimeout to avoid Supabase auth deadlock
+          setTimeout(async () => {
+            // Get user profile after sign in
+            const { data: profile, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+              
+            if (error && error.code !== 'PGRST116') {
+              console.error('Error fetching user profile:', error);
+            }
+            
+            setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+              name: profile?.name || session.user.email?.split('@')[0] || 'User',
+              role: (profile?.account_type as UserRole) || 'customer'
+            });
+            
+            setIsLoading(false);
+          }, 0);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setIsLoading(false);
+        }
+      }
+    );
+    
+    // Check for existing session right after setting up the listener
     const checkSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -66,35 +99,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     
     checkSession();
     
-    // Subscribe to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session) {
-          // Get user profile after sign in
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-            
-          if (error && error.code !== 'PGRST116') {
-            console.error('Error fetching user profile:', error);
-          }
-          
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            name: profile?.name || session.user.email?.split('@')[0] || 'User',
-            role: (profile?.account_type as UserRole) || 'customer'
-          });
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-        }
-        
-        setIsLoading(false);
-      }
-    );
-    
     return () => {
       subscription.unsubscribe();
     };
@@ -115,25 +119,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw error;
       }
       
-      // Get user profile
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
-      
-      if (profileError && profileError.code !== 'PGRST116') {
-        console.error('Error fetching profile:', profileError);
-      }
-      
-      // Set user with profile data
-      setUser({
-        id: data.user.id,
-        email: data.user.email || '',
-        name: profile?.name || data.user.email?.split('@')[0] || 'User',
-        role: (profile?.account_type as UserRole) || role
-      });
-      
+      // User will be set by the auth state listener
       toast({
         title: "Login successful",
         description: `Welcome back!`,
@@ -145,9 +131,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: error.message || "Invalid email or password",
         variant: "destructive",
       });
+      setIsLoading(false); // Ensure loading is reset on error
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -191,14 +176,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           });
         }
         
-        // Set user with profile data
-        setUser({
-          id: data.user.id,
-          email: data.user.email || '',
-          name,
-          role
-        });
-        
+        // User will be set by the auth state listener
         toast({
           title: "Registration successful",
           description: `Welcome, ${name}!`,
@@ -211,9 +189,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: error.message || "Failed to create account",
         variant: "destructive",
       });
+      setIsLoading(false); // Ensure loading is reset on error
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -221,7 +198,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     try {
       await supabase.auth.signOut();
-      setUser(null);
+      // User will be cleared by the auth state listener
       toast({
         title: "Logged out",
         description: "You have been logged out successfully",

@@ -17,7 +17,7 @@ export default function Login() {
   const [role, setRole] = useState<UserRole>('customer');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -28,23 +28,46 @@ export default function Login() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(role === 'vendor' ? '/vendor/dashboard' : redirectTo);
+      // Use setTimeout to prevent state update during render
+      setTimeout(() => {
+        navigate(role === 'vendor' ? '/vendor/dashboard' : redirectTo, { replace: true });
+      }, 0);
     }
   }, [isAuthenticated, navigate, role, redirectTo]);
 
+  useEffect(() => {
+    // Update local loading state based on auth provider loading state
+    if (!authLoading && isLoading) {
+      setIsLoading(false);
+    }
+  }, [authLoading, isLoading]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate inputs
+    if (!email || !password) {
+      setError("Email and password are required");
+      return;
+    }
+    
     setError(null);
     setIsLoading(true);
     
     try {
       await login(email, password, role);
-      navigate(role === 'vendor' ? '/vendor/dashboard' : redirectTo);
+      // Navigate will happen in the useEffect when isAuthenticated changes
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || 'Login failed. Please check your credentials and try again.');
-    } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !isLoading) {
+      const form = e.currentTarget.closest('form');
+      if (form) form.requestSubmit();
     }
   };
 
@@ -85,7 +108,9 @@ export default function Login() {
                       placeholder="your@email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      onKeyDown={handleKeyDown}
                       required
+                      autoComplete="email"
                     />
                   </div>
                   
@@ -101,7 +126,9 @@ export default function Login() {
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      onKeyDown={handleKeyDown}
                       required
+                      autoComplete="current-password"
                     />
                   </div>
                   
@@ -121,7 +148,9 @@ export default function Login() {
                       placeholder="your-business@email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      onKeyDown={handleKeyDown}
                       required
+                      autoComplete="email"
                     />
                   </div>
                   
@@ -137,7 +166,9 @@ export default function Login() {
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      onKeyDown={handleKeyDown}
                       required
+                      autoComplete="current-password"
                     />
                   </div>
                   

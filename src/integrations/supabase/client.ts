@@ -17,7 +17,8 @@ export const supabase = createClient<Database>(
       persistSession: true,
       storage: localStorage,
       autoRefreshToken: true,
-      detectSessionInUrl: true
+      detectSessionInUrl: true,
+      flowType: 'implicit'
     }
   }
 );
