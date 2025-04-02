@@ -93,7 +93,7 @@ export default function OrderConfirmation() {
 
         setOrder({
           ...orderData,
-          items: itemsData
+          items: itemsData as OrderItem[]
         });
       } catch (error) {
         console.error('Error fetching order:', error);
