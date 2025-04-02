@@ -21,28 +21,39 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { AlertCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { NavigationBar } from '@/components/NavigationBar';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrders } from '@/contexts/OrderContext';
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Checkout() {
   const { items, summary, clearCart } = useCart();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { createOrder } = useOrders();
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Form state
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   
   // Card payment details
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
   const [cardName, setCardName] = useState('');
+
+  // Redirect if not authenticated
+  if (!isAuthenticated) {
+    navigate('/login?redirectTo=/checkout');
+    return null;
+  }
 
   // Redirect to cart if there are no items
   if (items.length === 0) {
@@ -51,40 +62,31 @@ export default function Checkout() {
   }
 
   const validateCardDetails = () => {
+    setPaymentError(null);
+    
+    if (!deliveryAddress) {
+      setPaymentError("Please enter a delivery address");
+      return false;
+    }
+    
     if (paymentMethod === 'card') {
-      if (!cardNumber || cardNumber.length < 16) {
-        toast({
-          title: "Invalid card number",
-          description: "Please enter a valid card number",
-          variant: "destructive"
-        });
+      if (!cardNumber || cardNumber.replace(/\s/g, '').length < 16) {
+        setPaymentError("Please enter a valid card number");
         return false;
       }
       
       if (!cardExpiry || !cardExpiry.includes('/')) {
-        toast({
-          title: "Invalid expiry date",
-          description: "Please enter a valid expiry date (MM/YY)",
-          variant: "destructive"
-        });
+        setPaymentError("Please enter a valid expiry date (MM/YY)");
         return false;
       }
       
       if (!cardCvc || cardCvc.length < 3) {
-        toast({
-          title: "Invalid CVC",
-          description: "Please enter a valid CVC code",
-          variant: "destructive"
-        });
+        setPaymentError("Please enter a valid CVC code");
         return false;
       }
       
       if (!cardName) {
-        toast({
-          title: "Missing cardholder name",
-          description: "Please enter the cardholder name",
-          variant: "destructive"
-        });
+        setPaymentError("Please enter the cardholder name");
         return false;
       }
     }
@@ -93,32 +95,116 @@ export default function Checkout() {
   };
 
   const handlePlaceOrder = async () => {
-    if (!deliveryAddress) {
-      toast({
-        title: "Missing delivery address",
-        description: "Please enter a delivery address",
-        variant: "destructive"
-      });
-      return;
-    }
-
     if (!validateCardDetails()) {
       return;
     }
 
     setIsProcessing(true);
+    setPaymentError(null);
 
     try {
       if (!user) {
-        navigate('/login');
+        navigate('/login?redirectTo=/checkout');
         return;
       }
 
+      // Create order in Supabase directly
+      const { data: orderData, error: orderError } = await supabase
+        .from('full_orders')
+        .insert({
+          user_id: user.id,
+          customer_name: user.name,
+          delivery_address: deliveryAddress,
+          payment_method: paymentMethod,
+          status: 'pending',
+          subtotal: summary.subtotal,
+          delivery_fee: summary.deliveryFee,
+          total: summary.total
+        })
+        .select()
+        .single();
+      
+      if (orderError) {
+        throw new Error(`Failed to create order: ${orderError.message}`);
+      }
+      
+      // Create order items in Supabase
+      const orderItems = items.map(item => ({
+        order_id: orderData.id,
+        product_id: item.productId,
+        product_name: item.name,
+        quantity: item.quantity,
+        amount: item.amount,
+        price: item.price,
+        vendor_id: item.vendorId,
+        vendor_name: item.vendorName,
+        image: item.image
+      }));
+      
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems);
+      
+      if (itemsError) {
+        throw new Error(`Failed to create order items: ${itemsError.message}`);
+      }
+      
       // Process payment (simulated)
       // In a real app, this would call a payment processing service
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      let paymentSuccess = true;
+      
+      // Simulate payment processing - using test card numbers to determine success/failure
+      // If card number starts with '4242', payment succeeds, otherwise it fails
+      if (paymentMethod === 'card') {
+        const testCardNumber = cardNumber.replace(/\s/g, '');
+        paymentSuccess = testCardNumber.startsWith('4242');
+        
+        // Update order status based on payment result
+        const newStatus = paymentSuccess ? 'processing' : 'payment_failed';
+        
+        await supabase
+          .from('full_orders')
+          .update({ status: newStatus })
+          .eq('id', orderData.id);
+        
+        // Create payment transaction record
+        await supabase
+          .from('payment_transactions')
+          .insert({
+            order_id: orderData.id,
+            payment_method: paymentMethod,
+            amount: summary.total,
+            status: paymentSuccess ? 'completed' : 'failed',
+            transaction_id: `tr_${Date.now()}`,
+            transaction_data: { 
+              card_last4: testCardNumber.slice(-4),
+              payment_details: paymentSuccess ? 'Payment successful' : 'Payment failed'
+            }
+          });
+      } else {
+        // For cash payments, update order status to processing
+        await supabase
+          .from('full_orders')
+          .update({ status: 'processing' })
+          .eq('id', orderData.id);
+          
+        // Create payment transaction record for cash payment
+        await supabase
+          .from('payment_transactions')
+          .insert({
+            order_id: orderData.id,
+            payment_method: 'cash',
+            amount: summary.total,
+            status: 'pending',
+            transaction_data: { payment_details: 'Cash on delivery' }
+          });
+      }
+      
+      if (!paymentSuccess) {
+        throw new Error("Payment failed. Please check your card details and try again.");
+      }
 
-      // Create new order
+      // Create order in context for backward compatibility
       const order = await createOrder(
         user.id,
         user.name,
@@ -138,12 +224,14 @@ export default function Checkout() {
       });
 
       // Navigate to order confirmation
-      navigate(`/order-confirmation/${order.id}`);
-    } catch (error) {
+      navigate(`/order-confirmation/${orderData.id}`);
+    } catch (error: any) {
       console.error('Error placing order:', error);
+      setPaymentError(error.message || "There was an error processing your payment. Please try again.");
+      
       toast({
         title: "Payment failed",
-        description: "There was an error processing your payment. Please try again.",
+        description: error.message || "There was an error processing your payment. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -186,6 +274,14 @@ export default function Checkout() {
 
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-gray-800 mb-6">Checkout</h1>
+
+        {paymentError && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Payment failed</AlertTitle>
+            <AlertDescription>{paymentError}</AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Delivery Information */}
@@ -251,6 +347,9 @@ export default function Checkout() {
                         onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                         maxLength={19}
                       />
+                      <p className="text-xs text-gray-500">
+                        Test card: 4242 4242 4242 4242 (success) or any other number (failure)
+                      </p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">

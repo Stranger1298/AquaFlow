@@ -1,11 +1,13 @@
 
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 import { useAuth, UserRole } from '@/contexts/AuthContext';
 import { NavigationBar } from '@/components/NavigationBar';
 
@@ -14,18 +16,32 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('customer');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Get redirect URL from query parameters
+  const searchParams = new URLSearchParams(location.search);
+  const redirectTo = searchParams.get('redirectTo') || '/';
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(role === 'vendor' ? '/vendor/dashboard' : redirectTo);
+    }
+  }, [isAuthenticated, navigate, role, redirectTo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setIsLoading(true);
     
     try {
       await login(email, password, role);
-      navigate(role === 'vendor' ? '/vendor/dashboard' : '/');
-    } catch (error) {
-      console.error('Login failed:', error);
+      navigate(role === 'vendor' ? '/vendor/dashboard' : redirectTo);
+    } catch (err: any) {
+      setError(err.message || 'Login failed. Please check your credentials and try again.');
     } finally {
       setIsLoading(false);
     }
@@ -44,6 +60,14 @@ export default function Login() {
           </CardHeader>
           
           <CardContent>
+            {error && (
+              <Alert variant="destructive" className="mb-6">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            
             <Tabs defaultValue="customer" className="w-full" onValueChange={(value) => setRole(value as UserRole)}>
               <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="customer">Customer</TabsTrigger>

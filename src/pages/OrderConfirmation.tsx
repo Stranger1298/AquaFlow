@@ -33,7 +33,14 @@ export default function OrderConfirmation() {
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      navigate('/login?redirectTo=' + encodeURIComponent(window.location.pathname));
+    }
+  }, [isAuthenticated, isLoading, navigate]);
 
   // Fetch order details from Supabase
   useEffect(() => {
@@ -44,7 +51,7 @@ export default function OrderConfirmation() {
       }
 
       try {
-        // First, try to get the order from Supabase
+        // Try to get the order from Supabase
         const { data: orderData, error: orderError } = await supabase
           .from('full_orders')
           .select('*')
@@ -52,6 +59,8 @@ export default function OrderConfirmation() {
           .single();
 
         if (orderError) {
+          console.error('Error fetching order:', orderError);
+          
           // If not found in Supabase, try from context (legacy)
           const contextOrder = getOrder(orderId);
           if (contextOrder) {
@@ -118,6 +127,23 @@ export default function OrderConfirmation() {
 
   if (!order) return null;
 
+  // Determine status color and icon
+  const getStatusDisplay = () => {
+    const statusMap: Record<string, { color: string, iconClass: string }> = {
+      'pending': { color: 'bg-yellow-100 text-yellow-600', iconClass: 'text-yellow-600' },
+      'processing': { color: 'bg-blue-100 text-blue-600', iconClass: 'text-blue-600' },
+      'delivering': { color: 'bg-purple-100 text-purple-600', iconClass: 'text-purple-600' },
+      'completed': { color: 'bg-green-100 text-green-600', iconClass: 'text-green-600' },
+      'cancelled': { color: 'bg-red-100 text-red-600', iconClass: 'text-red-600' },
+      'payment_failed': { color: 'bg-red-100 text-red-600', iconClass: 'text-red-600' }
+    };
+
+    return statusMap[order.status] || { color: 'bg-gray-100 text-gray-600', iconClass: 'text-gray-600' };
+  };
+
+  const statusDisplay = getStatusDisplay();
+  const isSuccessful = order.status !== 'payment_failed' && order.status !== 'cancelled';
+
   return (
     <div className="min-h-screen flex flex-col">
       <NavigationBar />
@@ -125,26 +151,53 @@ export default function OrderConfirmation() {
       <div className="container mx-auto px-4 py-8 flex-1 flex flex-col items-center justify-center">
         <div className="max-w-2xl w-full bg-white rounded-lg shadow-lg p-8 text-center">
           <div className="mb-8">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="32"
-                height="32"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-green-600"
-              >
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                <polyline points="22 4 12 14.01 9 11.01"></polyline>
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">Order Confirmed!</h1>
+            {isSuccessful ? (
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-green-600"
+                >
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </div>
+            ) : (
+              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-red-600"
+                >
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="15" y1="9" x2="9" y2="15"></line>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+              </div>
+            )}
+            
+            <h1 className="text-3xl font-bold text-gray-800 mb-2">
+              {isSuccessful ? "Order Confirmed!" : "Payment Failed"}
+            </h1>
             <p className="text-gray-600">
-              Thank you for your order. Your order has been placed successfully.
+              {isSuccessful 
+                ? "Thank you for your order. Your order has been placed successfully."
+                : "There was an error processing your payment. Please try again."
+              }
             </p>
           </div>
           
@@ -163,7 +216,9 @@ export default function OrderConfirmation() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Order Status:</span>
-                <span className="font-medium capitalize">{order.status}</span>
+                <span className={`font-medium capitalize px-2 py-1 rounded-full text-sm ${statusDisplay.color}`}>
+                  {order.status.replace('_', ' ')}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Total Amount:</span>
@@ -177,18 +232,31 @@ export default function OrderConfirmation() {
           </div>
           
           <div className="space-y-4">
-            <p className="text-gray-600">
-              We've sent a confirmation email to your registered email address.
-              You can also track your order status in your account.
-            </p>
+            {isSuccessful ? (
+              <p className="text-gray-600">
+                We've sent a confirmation email to your registered email address.
+                You can also track your order status in your account.
+              </p>
+            ) : (
+              <p className="text-gray-600">
+                You can try placing your order again with a different payment method.
+                If you continue to experience issues, please contact customer support.
+              </p>
+            )}
             
             <div className="flex flex-col sm:flex-row justify-center space-y-3 sm:space-y-0 sm:space-x-4">
               <Button asChild variant="outline">
                 <Link to="/">Continue Shopping</Link>
               </Button>
-              <Button asChild>
-                <Link to="/orders">View My Orders</Link>
-              </Button>
+              {isSuccessful ? (
+                <Button asChild>
+                  <Link to="/orders">View My Orders</Link>
+                </Button>
+              ) : (
+                <Button asChild>
+                  <Link to="/cart">Return to Cart</Link>
+                </Button>
+              )}
             </div>
           </div>
         </div>
