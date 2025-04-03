@@ -59,7 +59,9 @@ export default function Login() {
       // Navigate will happen in the useEffect when isAuthenticated changes
     } catch (err: unknown) {
       console.error('Login error:', err);
-      setError(err.message || 'Login failed. Please check your credentials and try again.');
+      setError(
+        err instanceof Error ? err.message : 'Login failed. Please check your credentials and try again.'
+      );
       setIsLoading(false);
     }
   };
