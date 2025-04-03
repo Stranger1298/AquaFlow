@@ -187,18 +187,27 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
       
       console.log('Created order:', orderData);
       
-      // Create order items in Supabase
-      const orderItems = items.map(item => ({
-        order_id: orderData.id,
-        product_id: item.productId,
-        product_name: item.name,
-        quantity: item.quantity,
-        amount: item.quantity,
-        price: item.price,
-        vendor_id: item.vendorId,
-        vendor_name: item.vendorName,
-        image: item.image
-      }));
+      // Create order items in Supabase - Fix the product ID issue here
+      const orderItems = items.map(item => {
+        // Convert numeric IDs to UUID format if needed
+        // This ensures IDs are in the proper UUID format
+        const processedProductId = item.productId.includes('-') ? item.productId : undefined;
+        const processedVendorId = item.vendorId.includes('-') ? item.vendorId : undefined;
+
+        return {
+          order_id: orderData.id,
+          product_id: processedProductId || crypto.randomUUID(), // Generate UUID if invalid
+          product_name: item.name,
+          quantity: item.quantity,
+          amount: item.quantity,
+          price: item.price,
+          vendor_id: processedVendorId || "00000000-0000-0000-0000-000000000000", // Default UUID if invalid
+          vendor_name: item.vendorName,
+          image: item.image
+        };
+      });
+      
+      console.log('Creating order items:', orderItems);
       
       const { error: itemsError } = await supabase
         .from('order_items')

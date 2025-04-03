@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -41,11 +42,11 @@ export default function Checkout() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   
-  // Card payment details
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
-  const [cardName, setCardName] = useState('');
+  // Card payment details - Hardcoded values for testing
+  const [cardNumber, setCardNumber] = useState('4242 4242 4242 4242');
+  const [cardExpiry, setCardExpiry] = useState('12/25');
+  const [cardCvc, setCardCvc] = useState('123');
+  const [cardName, setCardName] = useState('Test User');
 
   // Redirect if not authenticated
   if (!isAuthenticated) {
@@ -244,6 +245,7 @@ export default function Checkout() {
                         placeholder="John Doe" 
                         value={cardName}
                         onChange={(e) => setCardName(e.target.value)}
+                        autoComplete="cc-name"
                       />
                     </div>
                     
@@ -255,9 +257,10 @@ export default function Checkout() {
                         value={cardNumber}
                         onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                         maxLength={19}
+                        autoComplete="cc-number"
                       />
                       <p className="text-xs text-gray-500">
-                        Any card number will work for testing
+                        Using test card number: 4242 4242 4242 4242
                       </p>
                     </div>
 
@@ -270,6 +273,7 @@ export default function Checkout() {
                           value={cardExpiry}
                           onChange={(e) => setCardExpiry(formatCardExpiry(e.target.value))}
                           maxLength={5}
+                          autoComplete="cc-exp"
                         />
                       </div>
                       <div className="space-y-2">
@@ -280,6 +284,7 @@ export default function Checkout() {
                           value={cardCvc}
                           onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, ''))}
                           maxLength={4}
+                          autoComplete="cc-csc"
                         />
                       </div>
                     </div>

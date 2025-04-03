@@ -51,6 +51,9 @@ export default function OrderConfirmation() {
       }
 
       try {
+        setIsLoading(true);
+        console.log('Fetching order details for orderID:', orderId);
+        
         // Try to get the order from Supabase
         const { data: orderData, error: orderError } = await supabase
           .from('full_orders')
@@ -64,6 +67,7 @@ export default function OrderConfirmation() {
           // If not found in Supabase, try from context (legacy)
           const contextOrder = getOrder(orderId);
           if (contextOrder) {
+            console.log('Found order in context:', contextOrder);
             setOrder({
               id: contextOrder.id,
               customer_name: contextOrder.customerName,
@@ -82,11 +86,14 @@ export default function OrderConfirmation() {
               }))
             });
           } else {
+            console.error('Order not found in context either');
             navigate('/');
           }
           setIsLoading(false);
           return;
         }
+
+        console.log('Order data from Supabase:', orderData);
 
         // If found in Supabase, get the order items
         const { data: itemsData, error: itemsError } = await supabase
@@ -99,6 +106,8 @@ export default function OrderConfirmation() {
           setIsLoading(false);
           return;
         }
+
+        console.log('Order items from Supabase:', itemsData);
 
         setOrder({
           ...orderData,
