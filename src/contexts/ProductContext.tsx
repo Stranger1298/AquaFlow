@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useToast } from "@/components/ui/use-toast";
 
@@ -149,7 +148,6 @@ const MOCK_PRODUCTS: Product[] = [
     isService: true,
     serviceType: 'installation'
   },
-  // New water products
   {
     id: '10',
     name: 'Sparkling Water',
@@ -274,6 +272,131 @@ const MOCK_PRODUCTS: Product[] = [
     featured: false,
     isService: true,
     serviceType: 'maintenance'
+  },
+  {
+    id: '21',
+    name: 'Premium Spring Water',
+    description: 'Pure spring water from pristine mountain sources',
+    price: 22.99,
+    vendorId: '3',
+    vendorName: 'Pure Hydration',
+    quantity: 25,
+    image: '/placeholder.svg',
+    featured: true,
+  },
+  {
+    id: '22',
+    name: 'Alkaline Water Plus',
+    description: 'High pH alkaline water with added minerals for maximum hydration',
+    price: 19.99,
+    vendorId: '1',
+    vendorName: 'Water Corp',
+    quantity: 15,
+    image: '/placeholder.svg',
+    featured: false,
+  },
+  {
+    id: '23',
+    name: 'Coconut Water',
+    description: 'Natural coconut water, rich in electrolytes and refreshing taste',
+    price: 24.99,
+    vendorId: '3',
+    vendorName: 'Pure Hydration',
+    quantity: 5,
+    image: '/placeholder.svg',
+    featured: true,
+  },
+  {
+    id: '24',
+    name: 'Detox Water',
+    description: 'Purified water with added natural detoxifying ingredients',
+    price: 18.99,
+    vendorId: '1',
+    vendorName: 'Water Corp',
+    quantity: 10,
+    image: '/placeholder.svg',
+    featured: false,
+  },
+  {
+    id: '25',
+    name: 'Trace Minerals Water',
+    description: 'Enhanced with trace minerals essential for health',
+    price: 27.99,
+    vendorId: '3',
+    vendorName: 'Pure Hydration',
+    quantity: 15,
+    image: '/placeholder.svg',
+    featured: true,
+  },
+  {
+    id: '26',
+    name: 'Mountain Lake Water',
+    description: 'Sourced from pristine alpine lakes with natural purity',
+    price: 32.99,
+    vendorId: '1',
+    vendorName: 'Water Corp',
+    quantity: 20,
+    image: '/placeholder.svg',
+    featured: false,
+  },
+  {
+    id: '27',
+    name: 'Oxygen-Enriched Water',
+    description: 'Water with added oxygen for improved performance and recovery',
+    price: 23.99,
+    vendorId: '3',
+    vendorName: 'Pure Hydration',
+    quantity: 10,
+    image: '/placeholder.svg',
+    featured: true,
+  },
+  {
+    id: '28',
+    name: 'Reverse Osmosis Water',
+    description: 'Ultra-pure water processed through advanced reverse osmosis',
+    price: 16.99,
+    vendorId: '1',
+    vendorName: 'Water Corp',
+    quantity: 25,
+    image: '/placeholder.svg',
+    featured: false,
+  },
+  {
+    id: '29',
+    name: 'Kids Spring Water',
+    description: 'Specially packaged spring water perfect for children',
+    price: 14.99,
+    vendorId: '3',
+    vendorName: 'Pure Hydration',
+    quantity: 8,
+    image: '/placeholder.svg',
+    featured: true,
+  },
+  {
+    id: '30',
+    name: 'Home Water Delivery Service',
+    description: 'Regular scheduled delivery of water directly to your home',
+    price: 49.99,
+    vendorId: '1',
+    vendorName: 'Water Corp',
+    quantity: 1,
+    image: '/placeholder.svg',
+    featured: true,
+    isService: true,
+    serviceType: 'delivery'
+  },
+  {
+    id: '31',
+    name: 'Water Dispenser Rental',
+    description: 'Monthly rental of a premium water dispenser for home or office',
+    price: 29.99,
+    vendorId: '3',
+    vendorName: 'Pure Hydration',
+    quantity: 1,
+    image: '/placeholder.svg',
+    featured: false,
+    isService: true,
+    serviceType: 'rental'
   },
 ];
 
@@ -419,10 +542,10 @@ export const ProductProvider = ({ children }: { children: ReactNode }) => {
       }
       
       // Filter by price range
-      if (options.minPrice && product.price < options.minPrice) {
+      if (options.minPrice !== null && options.minPrice !== undefined && product.price < options.minPrice) {
         return false;
       }
-      if (options.maxPrice && product.price > options.maxPrice) {
+      if (options.maxPrice !== null && options.maxPrice !== undefined && product.price > options.maxPrice) {
         return false;
       }
       

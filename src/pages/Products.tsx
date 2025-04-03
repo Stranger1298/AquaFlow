@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,7 @@ import {
 import { NavigationBar } from '@/components/NavigationBar';
 import { ProductCard } from '@/components/ProductCard';
 import { useProducts, ProductFilterOptions } from '@/contexts/ProductContext';
-import { Check, ChevronsUpDown, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function Products() {
@@ -66,8 +66,10 @@ export default function Products() {
       maxPrice: priceRange[1],
     };
     
-    setFilteredProducts(filterProducts(options));
-  }, [searchTerm, quantity, priceRange, filterProducts]);
+    const filtered = filterProducts(options);
+    setFilteredProducts(filtered);
+    console.log('Filtered products:', filtered.length);
+  }, [searchTerm, quantity, priceRange, filterProducts, products]);
 
   // Generate search suggestions
   useEffect(() => {
