@@ -6,6 +6,7 @@ import { NavigationBar } from '@/components/NavigationBar';
 import { useOrders } from '@/contexts/OrderContext';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from "@/components/ui/use-toast";
 
 interface OrderItem {
   id: string;
@@ -29,11 +30,13 @@ interface OrderDetails {
 
 export default function OrderConfirmation() {
   const { orderId } = useParams<{ orderId: string }>();
-  const { getOrder } = useOrders();
+  const { getOrder, updateOrderStatus } = useOrders();
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
+  const { toast } = useToast();
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -122,6 +125,62 @@ export default function OrderConfirmation() {
 
     fetchOrderDetails();
   }, [orderId, navigate, getOrder]);
+
+  // Auto-complete order after a certain time (30 seconds for demo purposes)
+  useEffect(() => {
+    if (!order || order.status !== 'pending') return;
+
+    // Set initial time left for demo purposes (30 seconds)
+    const initialTimeLeft = 30;
+    setTimeLeft(initialTimeLeft);
+    
+    // Start countdown
+    const interval = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          clearInterval(interval);
+          // Update order status to completed
+          if (orderId) {
+            updateOrderInDb();
+            return 0;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    const updateOrderInDb = async () => {
+      try {
+        // Try to update in Supabase first
+        const { error } = await supabase
+          .from('full_orders')
+          .update({ status: 'completed' })
+          .eq('id', orderId);
+        
+        if (error) {
+          console.error('Failed to update order in Supabase:', error);
+          // Fall back to context update
+          if (updateOrderStatus) {
+            updateOrderStatus(orderId as string, 'completed');
+          }
+        }
+        
+        // Update local state
+        setOrder(prev => prev ? { ...prev, status: 'completed' } : null);
+        
+        toast({
+          title: "Order Completed!",
+          description: "Your order has been marked as completed.",
+        });
+      } catch (error) {
+        console.error('Error updating order status:', error);
+      }
+    };
+
+    return () => clearInterval(interval);
+  }, [order, orderId, toast, updateOrderStatus]);
 
   if (isLoading) {
     return (
@@ -223,11 +282,18 @@ export default function OrderConfirmation() {
                   {new Date(order.created_at).toLocaleDateString()}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-gray-600">Order Status:</span>
-                <span className={`font-medium capitalize px-2 py-1 rounded-full text-sm ${statusDisplay.color}`}>
-                  {order.status.replace('_', ' ')}
-                </span>
+                <div className="flex items-center space-x-2">
+                  <span className={`font-medium capitalize px-2 py-1 rounded-full text-sm ${statusDisplay.color}`}>
+                    {order.status.replace('_', ' ')}
+                  </span>
+                  {order.status === 'pending' && timeLeft !== null && (
+                    <span className="text-xs text-gray-500">
+                      (Completing in {timeLeft}s)
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Total Amount:</span>

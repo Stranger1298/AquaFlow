@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,9 +11,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { NavigationBar } from '@/components/NavigationBar';
 import { ProductCard } from '@/components/ProductCard';
 import { useProducts, ProductFilterOptions } from '@/contexts/ProductContext';
+import { Check, ChevronsUpDown, Search } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function Products() {
   const [searchParams] = useSearchParams();
@@ -25,6 +40,8 @@ export default function Products() {
   const [quantity, setQuantity] = useState<string>('');
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100]);
   const [filteredProducts, setFilteredProducts] = useState(products);
+  const [open, setOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   
   // Available quantities (based on existing products)
   const availableQuantities = [...new Set(products.map(p => p.quantity))].sort((a, b) => a - b);
@@ -52,6 +69,28 @@ export default function Products() {
     setFilteredProducts(filterProducts(options));
   }, [searchTerm, quantity, priceRange, filterProducts]);
 
+  // Generate search suggestions
+  useEffect(() => {
+    if (searchTerm.length > 0) {
+      const allProductNames = [...new Set(products.map(p => p.name.toLowerCase()))];
+      const allVendorNames = [...new Set(products.map(p => p.vendorName.toLowerCase()))];
+      const allTerms = [...allProductNames, ...allVendorNames];
+      
+      const filtered = allTerms.filter(term => 
+        term.toLowerCase().includes(searchTerm.toLowerCase())
+      ).slice(0, 5);
+      
+      setSuggestions(filtered);
+    } else {
+      setSuggestions([]);
+    }
+  }, [searchTerm, products]);
+
+  const handleSelectSuggestion = (value: string) => {
+    setSearchTerm(value);
+    setOpen(false);
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <NavigationBar />
@@ -66,17 +105,49 @@ export default function Products() {
               <h2 className="text-lg font-semibold mb-4">Filters</h2>
               
               <div className="space-y-6">
-                {/* Search Filter */}
+                {/* Search Filter with suggestions */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Search
                   </label>
-                  <Input
-                    type="text"
-                    placeholder="Search products..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
+                  <Popover open={open && suggestions.length > 0} onOpenChange={setOpen}>
+                    <PopoverTrigger asChild>
+                      <div className="relative">
+                        <Input
+                          type="text"
+                          placeholder="Search products..."
+                          value={searchTerm}
+                          onChange={(e) => {
+                            setSearchTerm(e.target.value);
+                            if (e.target.value.length > 0) {
+                              setOpen(true);
+                            }
+                          }}
+                          className="w-full pr-8"
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                          <Search className="h-4 w-4 text-gray-400" />
+                        </div>
+                      </div>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 w-full" align="start">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {suggestions.map((suggestion) => (
+                              <CommandItem
+                                key={suggestion}
+                                onSelect={() => handleSelectSuggestion(suggestion)}
+                              >
+                                <span>{suggestion}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                        <CommandEmpty>No results found</CommandEmpty>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 
                 {/* Quantity Filter */}
