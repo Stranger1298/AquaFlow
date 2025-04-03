@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -108,76 +107,14 @@ export default function Checkout() {
         return;
       }
 
-      // Simulate successful payment for any card number
+      // All orders are considered successful in this demo
       const paymentSuccess = true;
+      
+      console.log('Creating order for user:', user.id);
+      console.log('Items to be ordered:', items);
 
-      // Create order in Supabase
-      const { data: orderData, error: orderError } = await supabase
-        .from('full_orders')
-        .insert({
-          user_id: user.id,
-          customer_name: user.name || 'Customer',
-          delivery_address: deliveryAddress,
-          payment_method: paymentMethod,
-          status: paymentSuccess ? 'processing' : 'payment_failed',
-          subtotal: summary.subtotal,
-          delivery_fee: summary.deliveryFee,
-          total: summary.total
-        })
-        .select()
-        .single();
-      
-      if (orderError) {
-        console.error('Order creation error:', orderError);
-        throw new Error(`Failed to create order: ${orderError.message}`);
-      }
-      
-      console.log('Created order:', orderData);
-      
-      // Create order items in Supabase - Fixed for UUID type
-      const orderItems = items.map(item => ({
-        order_id: orderData.id,
-        product_id: item.productId, // Ensure this is a valid UUID
-        product_name: item.name,
-        quantity: item.quantity,
-        amount: item.amount,
-        price: item.price,
-        vendor_id: item.vendorId,
-        vendor_name: item.vendorName,
-        image: item.image
-      }));
-      
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItems);
-      
-      if (itemsError) {
-        console.error('Order items creation error:', itemsError);
-        throw new Error(`Failed to create order items: ${itemsError.message}`);
-      }
-      
-      // Create payment transaction record
-      const { error: paymentError } = await supabase
-        .from('payment_transactions')
-        .insert({
-          order_id: orderData.id,
-          payment_method: paymentMethod,
-          amount: summary.total,
-          status: paymentMethod === 'cash' ? 'cash_on_delivery' : (paymentSuccess ? 'completed' : 'failed'),
-          transaction_id: `tr_${Date.now()}`,
-          transaction_data: { 
-            card_last4: paymentMethod === 'card' ? cardNumber.slice(-4) : null,
-            payment_details: paymentMethod === 'cash' ? 'Cash on delivery' : 'Payment successful'
-          }
-        });
-        
-      if (paymentError) {
-        console.error('Payment transaction error:', paymentError);
-        throw new Error(`Failed to create payment transaction: ${paymentError.message}`);
-      }
-
-      // Call createOrder for context update and backward compatibility
-      await createOrder(
+      // Use the createOrder function from OrderContext
+      const order = await createOrder(
         user.id,
         user.name || 'Customer',
         items,
@@ -186,6 +123,8 @@ export default function Checkout() {
         paymentMethod
       );
 
+      console.log('Order created successfully:', order);
+      
       // Clear the cart
       clearCart();
 
@@ -198,7 +137,7 @@ export default function Checkout() {
       });
 
       // Navigate to order confirmation
-      navigate(`/order-confirmation/${orderData.id}`);
+      navigate(`/order-confirmation/${order.id}`);
     } catch (error: any) {
       console.error('Error placing order:', error);
       setPaymentError(error.message || "There was an error processing your order. Please try again.");

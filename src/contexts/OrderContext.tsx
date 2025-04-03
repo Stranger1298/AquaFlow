@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from '@/contexts/AuthContext';
@@ -99,7 +98,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
               productId: item.product_id,
               name: item.product_name,
               price: item.price,
-              amount: item.amount,
+              amount: item.quantity,
               quantity: item.quantity,
               vendorId: item.vendor_id,
               vendorName: item.vendor_name,
@@ -116,7 +115,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
                 deliveryFee: order.delivery_fee,
                 total: order.total,
                 isDeliveryFeeWaived: order.delivery_fee === 0,
-                itemCount: orderItems.reduce((sum: number, item: any) => sum + item.amount, 0)
+                itemCount: orderItems.reduce((sum: number, item: any) => sum + item.quantity, 0)
               },
               status: order.status as OrderStatus,
               createdAt: order.created_at,
@@ -172,7 +171,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
           customer_name: customerName,
           delivery_address: deliveryAddress,
           payment_method: paymentMethod,
-          status: 'pending',
+          status: 'processing',
           subtotal: summary.subtotal,
           delivery_fee: summary.deliveryFee,
           total: summary.total
@@ -182,7 +181,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
       
       if (orderError) {
         console.error('Order creation error:', orderError);
-        throw orderError;
+        throw new Error(`Failed to create order: ${orderError.message}`);
       }
       
       console.log('Created order:', orderData);
@@ -193,7 +192,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         product_id: item.productId,
         product_name: item.name,
         quantity: item.quantity,
-        amount: item.amount,
+        amount: item.quantity,
         price: item.price,
         vendor_id: item.vendorId,
         vendor_name: item.vendorName,
@@ -206,7 +205,11 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
       
       if (itemsError) {
         console.error('Order items creation error:', itemsError);
-        throw itemsError;
+        await supabase
+          .from('full_orders')
+          .update({ status: 'cancelled' })
+          .eq('id', orderData.id);
+        throw new Error(`Failed to create order items: ${itemsError.message}`);
       }
       
       // Create payment transaction record
@@ -218,12 +221,18 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
           amount: summary.total,
           status: paymentMethod === 'cash' ? 'cash_on_delivery' : 'completed',
           transaction_id: `tr_${Date.now()}`,
-          transaction_data: { payment_details: paymentMethod === 'cash' ? 'Cash on delivery' : 'Payment processed' }
+          transaction_data: { 
+            payment_details: paymentMethod === 'cash' ? 'Cash on delivery' : 'Payment processed' 
+          }
         });
       
       if (paymentError) {
         console.error('Payment transaction error:', paymentError);
-        throw paymentError;
+        await supabase
+          .from('full_orders')
+          .update({ status: 'payment_failed' })
+          .eq('id', orderData.id);
+        throw new Error(`Failed to create payment transaction: ${paymentError.message}`);
       }
       
       // Create the order object to return
@@ -234,27 +243,27 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         customerName,
         items,
         summary,
-        status: 'pending',
+        status: 'processing',
         createdAt: now,
         updatedAt: now,
         deliveryAddress,
         paymentMethod,
       };
       
-      // Update local state for backward compatibility
+      // Update local state
       setOrders(prevOrders => [...prevOrders, newOrder]);
       
       toast({
         title: "Order placed",
-        description: `Your order #${newOrder.id.slice(-8)} has been placed successfully`,
+        description: `Your order #${newOrder.id.slice(-8)} has been placed successfully and is being processed.`,
       });
       
       return newOrder;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating order:', error);
       toast({
         title: "Order failed",
-        description: "There was an error placing your order. Please try again.",
+        description: `Order placement failed: ${error.message}`,
         variant: "destructive",
       });
       throw error;

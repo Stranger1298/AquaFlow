@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useToast } from "@/components/ui/use-toast";
 
@@ -13,6 +12,8 @@ export interface Product {
   quantity: number; // Water quantity in liters
   image: string;
   featured: boolean;
+  isService?: boolean;
+  serviceType?: string;
 }
 
 export type ProductFilterOptions = {
@@ -21,11 +22,13 @@ export type ProductFilterOptions = {
   maxPrice?: number | null;
   vendorId?: string | null;
   search?: string | null;
+  isService?: boolean | null;
 };
 
 interface ProductContextType {
   products: Product[];
   featuredProducts: Product[];
+  services: Product[];
   isLoading: boolean;
   error: string | null;
   addProduct: (product: Omit<Product, 'id'>) => Promise<void>;
@@ -93,6 +96,58 @@ const MOCK_PRODUCTS: Product[] = [
     image: '/placeholder.svg',
     featured: true,
   },
+  {
+    id: '6',
+    name: 'Water Filtration System Installation',
+    description: 'Professional installation of home water filtration systems',
+    price: 149.99,
+    vendorId: '1',
+    vendorName: 'Water Corp',
+    quantity: 1,
+    image: '/placeholder.svg',
+    featured: true,
+    isService: true,
+    serviceType: 'installation'
+  },
+  {
+    id: '7',
+    name: 'Monthly Water Testing',
+    description: 'Regular testing of your water quality',
+    price: 29.99,
+    vendorId: '1',
+    vendorName: 'Water Corp',
+    quantity: 1,
+    image: '/placeholder.svg',
+    featured: false,
+    isService: true,
+    serviceType: 'testing'
+  },
+  {
+    id: '8',
+    name: 'Water Cooler Maintenance',
+    description: 'Cleaning and maintenance of water coolers',
+    price: 59.99,
+    vendorId: '3',
+    vendorName: 'Pure Hydration',
+    quantity: 1,
+    image: '/placeholder.svg',
+    featured: true,
+    isService: true,
+    serviceType: 'maintenance'
+  },
+  {
+    id: '9',
+    name: 'Water Softener Installation',
+    description: 'Professional installation of water softening systems',
+    price: 199.99,
+    vendorId: '3',
+    vendorName: 'Pure Hydration',
+    quantity: 1,
+    image: '/placeholder.svg',
+    featured: false,
+    isService: true,
+    serviceType: 'installation'
+  },
 ];
 
 // Create context
@@ -116,6 +171,9 @@ export const ProductProvider = ({ children }: { children: ReactNode }) => {
 
   // Get featured products
   const featuredProducts = products.filter(product => product.featured);
+  
+  // Get services
+  const services = products.filter(product => product.isService);
 
   // Add a new product
   const addProduct = async (product: Omit<Product, 'id'>): Promise<void> => {
@@ -222,6 +280,12 @@ export const ProductProvider = ({ children }: { children: ReactNode }) => {
   // Filter products
   const filterProducts = (options: ProductFilterOptions): Product[] => {
     return products.filter(product => {
+      // Filter by isService
+      if (options.isService !== undefined && options.isService !== null) {
+        if (options.isService && !product.isService) return false;
+        if (!options.isService && product.isService) return false;
+      }
+      
       // Filter by quantity
       if (options.quantity && product.quantity !== options.quantity) {
         return false;
@@ -259,6 +323,7 @@ export const ProductProvider = ({ children }: { children: ReactNode }) => {
       value={{
         products,
         featuredProducts,
+        services,
         isLoading,
         error,
         addProduct,
