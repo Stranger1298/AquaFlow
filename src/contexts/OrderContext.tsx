@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from '@/contexts/AuthContext';
@@ -236,7 +237,6 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
       }
       
       // Create the order object to return
-      const now = new Date().toISOString();
       const newOrder: Order = {
         id: orderData.id,
         customerId,
@@ -244,8 +244,8 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
         items,
         summary,
         status: 'processing',
-        createdAt: now,
-        updatedAt: now,
+        createdAt: orderData.created_at,
+        updatedAt: orderData.created_at,
         deliveryAddress,
         paymentMethod,
       };

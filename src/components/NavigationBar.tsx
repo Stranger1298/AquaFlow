@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
-import { ShoppingCart, User, LogIn } from 'lucide-react';
+import { ShoppingCart, User, LogIn, Droplets } from 'lucide-react';
 
 export function NavigationBar() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,11 +30,9 @@ export function NavigationBar() {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <Link to="/" className="text-2xl font-bold text-water-600 flex items-center">
-            <div className="w-8 h-8 rounded-full bg-water-500 flex items-center justify-center mr-2">
-              <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center">
-                <div className="w-4 h-4 rounded-full bg-water-500"></div>
-              </div>
+          <Link to="/" className="text-2xl font-bold text-blue-600 flex items-center">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center mr-2 shadow-lg">
+              <Droplets className="w-6 h-6 text-white" />
             </div>
             AquaFlow
           </Link>
@@ -55,21 +53,21 @@ export function NavigationBar() {
           
           {/* Navigation Links and Auth */}
           <div className="flex items-center space-x-4">
-            <Link to="/products" className="text-gray-600 hover:text-water-600">
+            <Link to="/products" className="text-gray-600 hover:text-blue-600">
               Products
             </Link>
             
             {user?.role === 'vendor' && (
-              <Link to="/vendor/dashboard" className="text-gray-600 hover:text-water-600">
+              <Link to="/vendor/dashboard" className="text-gray-600 hover:text-blue-600">
                 Vendor Dashboard
               </Link>
             )}
             
             {/* Cart */}
             <Link to="/cart" className="relative">
-              <ShoppingCart className="h-6 w-6 text-gray-600 hover:text-water-600" />
+              <ShoppingCart className="h-6 w-6 text-gray-600 hover:text-blue-600" />
               {summary.itemCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-water-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
                   {summary.itemCount}
                 </span>
               )}

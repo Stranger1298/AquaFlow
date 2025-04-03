@@ -26,8 +26,7 @@ import { NavigationBar } from '@/components/NavigationBar';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrders } from '@/contexts/OrderContext';
-import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Checkout() {
   const { items, summary, clearCart } = useCart();
@@ -107,9 +106,6 @@ export default function Checkout() {
         return;
       }
 
-      // All orders are considered successful in this demo
-      const paymentSuccess = true;
-      
       console.log('Creating order for user:', user.id);
       console.log('Items to be ordered:', items);
 
