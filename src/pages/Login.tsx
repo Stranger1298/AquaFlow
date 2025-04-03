@@ -57,7 +57,7 @@ export default function Login() {
     try {
       await login(email, password, role);
       // Navigate will happen in the useEffect when isAuthenticated changes
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Login error:', err);
       setError(err.message || 'Login failed. Please check your credentials and try again.');
       setIsLoading(false);
