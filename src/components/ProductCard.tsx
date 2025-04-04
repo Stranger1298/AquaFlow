@@ -16,14 +16,32 @@ export function ProductCard({ product }: ProductCardProps) {
   const cartItem = items.find(item => item.productId === product.id);
   
   const handleAddToCart = () => {
-    addItem(product);
+    addItem({
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      quantity: product.quantity,
+      amount: 1,
+      vendorId: product.vendorId,
+      vendorName: product.vendorName,
+      image: product.image
+    });
   };
   
   const handleIncrease = () => {
     if (cartItem) {
       updateItemAmount(cartItem.id, cartItem.amount + 1);
     } else {
-      addItem(product);
+      addItem({
+        productId: product.id,
+        name: product.name,
+        price: product.price,
+        quantity: product.quantity,
+        amount: 1,
+        vendorId: product.vendorId,
+        vendorName: product.vendorName,
+        image: product.image
+      });
     }
   };
   

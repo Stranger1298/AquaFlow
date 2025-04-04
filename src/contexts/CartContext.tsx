@@ -29,9 +29,11 @@ interface CartContextType {
   summary: CartSummary;
   addItem: (item: Omit<CartItem, 'id'>) => void;
   updateQuantity: (id: string, quantity: number) => void;
+  updateItemAmount: (id: string, amount: number) => void;
   removeItem: (id: string) => void;
   clearCart: () => void;
   isInCart: (productId: string) => boolean;
+  waiveDeliveryFee: () => void;
 }
 
 // Create context
@@ -146,6 +148,22 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     );
   };
 
+  // Update item amount - new function
+  const updateItemAmount = (id: string, amount: number) => {
+    if (amount <= 0) {
+      removeItem(id);
+      return;
+    }
+    
+    setItems(prevItems => 
+      prevItems.map(item => 
+        item.id === id
+          ? { ...item, amount }
+          : item
+      )
+    );
+  };
+
   // Remove item from cart
   const removeItem = (id: string) => {
     const itemToRemove = items.find(item => item.id === id);
@@ -170,6 +188,21 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     return items.some(item => item.productId === productId);
   };
 
+  // Waive delivery fee
+  const waiveDeliveryFee = () => {
+    setSummary(prevSummary => ({
+      ...prevSummary,
+      isDeliveryFeeWaived: true,
+      deliveryFee: 0,
+      total: prevSummary.subtotal // Update total to reflect waived fee
+    }));
+    
+    toast({
+      title: "Delivery fee waived",
+      description: "Your delivery fee has been waived!",
+    });
+  };
+
   return (
     <CartContext.Provider
       value={{
@@ -177,9 +210,11 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         summary,
         addItem,
         updateQuantity,
+        updateItemAmount,
         removeItem,
         clearCart,
         isInCart,
+        waiveDeliveryFee,
       }}
     >
       {children}
