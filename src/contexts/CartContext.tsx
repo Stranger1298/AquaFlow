@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useToast } from "@/components/ui/use-toast";
-import { Product } from './ProductContext';
+import { useOrders } from '@/contexts/OrderContext';
 
 // Types
 export interface CartItem {
@@ -9,11 +9,11 @@ export interface CartItem {
   productId: string;
   name: string;
   price: number;
-  quantity: number; // Water quantity in liters
+  quantity: number;
+  amount: number;
   vendorId: string;
   vendorName: string;
-  amount: number; // Number of this item in cart
-  image: string;
+  image: string | null;
 }
 
 export interface CartSummary {
@@ -27,17 +27,12 @@ export interface CartSummary {
 interface CartContextType {
   items: CartItem[];
   summary: CartSummary;
-  isLoading: boolean;
-  addItem: (product: Product, amount?: number) => void;
-  updateItemAmount: (itemId: string, amount: number) => void;
-  removeItem: (itemId: string) => void;
+  addItem: (item: Omit<CartItem, 'id'>) => void;
+  updateQuantity: (id: string, quantity: number) => void;
+  removeItem: (id: string) => void;
   clearCart: () => void;
-  waiveDeliveryFee: () => void;
-  restoreDeliveryFee: () => void;
+  isInCart: (productId: string) => boolean;
 }
-
-// Configuration
-const DELIVERY_FEE = 5.99;
 
 // Create context
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -45,167 +40,146 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 // Provider component
 export const CartProvider = ({ children }: { children: ReactNode }) => {
   const [items, setItems] = useState<CartItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isDeliveryFeeWaived, setIsDeliveryFeeWaived] = useState(false);
+  const [summary, setSummary] = useState<CartSummary>({
+    subtotal: 0,
+    deliveryFee: 10.00,
+    total: 0,
+    itemCount: 0,
+    isDeliveryFeeWaived: false
+  });
   const { toast } = useToast();
+  const { orders } = useOrders();
 
-  // Load cart from localStorage
+  // Load cart from localStorage on mount
   useEffect(() => {
     const savedCart = localStorage.getItem('aquaflow_cart');
-    if (savedCart) {
-      setItems(JSON.parse(savedCart));
-    }
     
-    const savedWaiver = localStorage.getItem('aquaflow_waived_fee');
-    if (savedWaiver) {
-      setIsDeliveryFeeWaived(JSON.parse(savedWaiver));
+    if (savedCart) {
+      try {
+        const parsedCart = JSON.parse(savedCart);
+        setItems(parsedCart);
+      } catch (error) {
+        console.error('Failed to parse saved cart', error);
+      }
     }
   }, []);
 
-  // Save cart to localStorage
+  // Empty cart after order is placed
+  useEffect(() => {
+    // Check if a new order was added
+    if (orders.length > 0) {
+      const lastOrder = orders[0];
+      const orderTimestamp = new Date(lastOrder.createdAt).getTime();
+      const currentTime = new Date().getTime();
+      
+      // If the order was placed in the last minute, clear the cart
+      if (currentTime - orderTimestamp < 60000) {
+        clearCart();
+      }
+    }
+  }, [orders]);
+
+  // Save cart to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('aquaflow_cart', JSON.stringify(items));
-  }, [items]);
-
-  // Save waiver status to localStorage
-  useEffect(() => {
-    localStorage.setItem('aquaflow_waived_fee', JSON.stringify(isDeliveryFeeWaived));
-  }, [isDeliveryFeeWaived]);
-
-  // Calculate cart summary
-  const calculateSummary = (): CartSummary => {
-    const itemCount = items.reduce((total, item) => total + item.amount, 0);
-    const subtotal = items.reduce((total, item) => total + (item.price * item.amount), 0);
-    const deliveryFee = isDeliveryFeeWaived ? 0 : DELIVERY_FEE;
-    const total = subtotal + deliveryFee;
     
-    return {
+    // Calculate summary
+    const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+    const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    
+    // Apply free delivery for orders over $50
+    const isDeliveryFeeWaived = subtotal >= 50;
+    const deliveryFee = isDeliveryFeeWaived ? 0 : 10.00;
+    
+    setSummary({
       subtotal,
       deliveryFee,
-      total,
+      total: subtotal + deliveryFee,
       itemCount,
-      isDeliveryFeeWaived,
-    };
-  };
+      isDeliveryFeeWaived
+    });
+  }, [items]);
 
   // Add item to cart
-  const addItem = (product: Product, amount: number = 1) => {
+  const addItem = (item: Omit<CartItem, 'id'>) => {
     setItems(prevItems => {
-      // Check if item already exists in cart
-      const existingItemIndex = prevItems.findIndex(item => item.productId === product.id);
+      // Check if product already exists in cart
+      const existingItem = prevItems.find(i => i.productId === item.productId);
       
-      if (existingItemIndex >= 0) {
+      if (existingItem) {
         // Update existing item
-        const updatedItems = [...prevItems];
-        updatedItems[existingItemIndex] = {
-          ...updatedItems[existingItemIndex],
-          amount: updatedItems[existingItemIndex].amount + amount,
-        };
-        
-        toast({
-          title: "Cart updated",
-          description: `${product.name} quantity increased`,
-        });
-        
-        return updatedItems;
+        return prevItems.map(i => 
+          i.productId === item.productId
+            ? { ...i, quantity: i.quantity + item.quantity }
+            : i
+        );
       } else {
         // Add new item
-        const newItem: CartItem = {
-          id: `cart_${Date.now()}`,
-          productId: product.id,
-          name: product.name,
-          price: product.price,
-          quantity: product.quantity,
-          vendorId: product.vendorId,
-          vendorName: product.vendorName,
-          amount,
-          image: product.image,
+        const newItem = {
+          ...item,
+          id: crypto.randomUUID() // Generate UUID for cart item
         };
-        
-        toast({
-          title: "Added to cart",
-          description: `${product.name} added to your cart`,
-        });
         
         return [...prevItems, newItem];
       }
     });
+    
+    toast({
+      title: "Added to cart",
+      description: `${item.name} has been added to your cart`,
+    });
   };
 
-  // Update item amount
-  const updateItemAmount = (itemId: string, amount: number) => {
-    if (amount <= 0) {
-      removeItem(itemId);
+  // Update item quantity
+  const updateQuantity = (id: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeItem(id);
       return;
     }
     
-    setItems(prevItems => {
-      const itemIndex = prevItems.findIndex(item => item.id === itemId);
-      
-      if (itemIndex === -1) return prevItems;
-      
-      const updatedItems = [...prevItems];
-      updatedItems[itemIndex] = {
-        ...updatedItems[itemIndex],
-        amount,
-      };
-      
-      return updatedItems;
-    });
+    setItems(prevItems => 
+      prevItems.map(item => 
+        item.id === id
+          ? { ...item, quantity }
+          : item
+      )
+    );
   };
 
   // Remove item from cart
-  const removeItem = (itemId: string) => {
-    setItems(prevItems => {
-      const item = prevItems.find(item => item.id === itemId);
-      const updatedItems = prevItems.filter(item => item.id !== itemId);
-      
-      if (item) {
-        toast({
-          title: "Removed from cart",
-          description: `${item.name} removed from your cart`,
-        });
-      }
-      
-      return updatedItems;
-    });
+  const removeItem = (id: string) => {
+    const itemToRemove = items.find(item => item.id === id);
+    
+    setItems(prevItems => prevItems.filter(item => item.id !== id));
+    
+    if (itemToRemove) {
+      toast({
+        title: "Removed from cart",
+        description: `${itemToRemove.name} has been removed from your cart`,
+      });
+    }
   };
 
   // Clear cart
   const clearCart = () => {
     setItems([]);
-    toast({
-      title: "Cart cleared",
-      description: "All items have been removed from your cart",
-    });
   };
 
-  // Waive delivery fee
-  const waiveDeliveryFee = () => {
-    setIsDeliveryFeeWaived(true);
-    toast({
-      title: "Delivery fee waived",
-      description: "You've successfully waived the delivery fee!",
-    });
-  };
-
-  // Restore delivery fee
-  const restoreDeliveryFee = () => {
-    setIsDeliveryFeeWaived(false);
+  // Check if product is in cart
+  const isInCart = (productId: string): boolean => {
+    return items.some(item => item.productId === productId);
   };
 
   return (
     <CartContext.Provider
       value={{
         items,
-        summary: calculateSummary(),
-        isLoading,
+        summary,
         addItem,
-        updateItemAmount,
+        updateQuantity,
         removeItem,
         clearCart,
-        waiveDeliveryFee,
-        restoreDeliveryFee,
+        isInCart,
       }}
     >
       {children}

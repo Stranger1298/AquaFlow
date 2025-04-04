@@ -19,6 +19,7 @@ import Orders from "./pages/Orders";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import VendorDashboard from "./pages/vendor/Dashboard";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 // Create a client with better caching and stale-while-revalidate config
@@ -50,6 +51,7 @@ const App = () => {
                     <Route path="/checkout" element={<Checkout />} />
                     <Route path="/order-confirmation/:orderId" element={<OrderConfirmation />} />
                     <Route path="/orders" element={<Orders />} />
+                    <Route path="/profile" element={<Profile />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/vendor/dashboard" element={<VendorDashboard />} />
