@@ -221,7 +221,7 @@ If you have any questions or need help, please:
 ---
 
 <div align="center">
-  Made with ❤️ by Aman
+  Made with ❤️ by the AquaFlow Team
   
   **[Live Demo](https://aquaflow-demo.vercel.app)** • **[Documentation](https://github.com/Stranger1298/AquaFlow/wiki)** • **[Report Bug](https://github.com/Stranger1298/AquaFlow/issues)**
 </div>
