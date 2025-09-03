@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { NavigationBar } from '@/components/NavigationBar';
-import { AdPlayer } from '@/components/AdPlayer';
+import { AdPlayer as PromoAdPlayer } from '@/components/PromoPlayer';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Minus, Trash2 } from 'lucide-react';
@@ -251,7 +251,7 @@ export default function Cart() {
             </DialogDescription>
           </DialogHeader>
           <div className="p-4">
-            <AdPlayer onClose={handleWatchAdComplete} />
+            <PromoAdPlayer onClose={handleWatchAdComplete} />
           </div>
         </DialogContent>
       </Dialog>

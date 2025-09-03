@@ -1,9 +1,11 @@
 
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from '@/contexts/AuthContext';
+import { realmApp, getMongoClient } from '@/integrations/mongodb/client';
 import { CartItem, CartSummary } from './CartContext';
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed; using localStorage and MongoDB Atlas (Realm) will be wired server-side later.
 
 // Types
 export type OrderStatus = 'pending' | 'processing' | 'delivering' | 'completed' | 'cancelled' | 'payment_failed';
@@ -41,6 +43,34 @@ interface OrderContextType {
   getOrder: (orderId: string) => Order | undefined;
 }
 
+// DB shapes
+interface DbOrderRecord {
+  id: string;
+  user_id?: string;
+  customer_name?: string;
+  delivery_address?: string;
+  payment_method?: string;
+  status?: OrderStatus;
+  subtotal?: number;
+  delivery_fee?: number;
+  total?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface DbOrderItemRecord {
+  id: string;
+  order_id: string;
+  product_id?: string;
+  product_name?: string;
+  quantity?: number;
+  amount?: number;
+  price?: number;
+  vendor_id?: string;
+  vendor_name?: string;
+  image?: string;
+}
+
 // Create context
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
@@ -52,7 +82,7 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Load orders from both localStorage and Supabase
+  // Load orders from localStorage (Supabase removed)
   useEffect(() => {
     const fetchOrders = async () => {
       if (!user) return;
@@ -60,84 +90,56 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(true);
       try {
         console.log('Fetching orders for user:', user.id);
-        
-        // First load from localStorage for backward compatibility
-        const savedOrders = localStorage.getItem('aquaflow_orders');
-        let allOrders = savedOrders ? JSON.parse(savedOrders) : [];
-        
-        // Then fetch from Supabase
-        const { data: supabaseOrders, error } = await supabase
-          .from('full_orders')
-          .select(`
-            id,
-            status,
-            subtotal,
-            delivery_fee,
-            total,
-            created_at,
-            updated_at,
-            user_id,
-            customer_name,
-            delivery_address,
-            payment_method,
-            order_items (*)
-          `)
-          .eq('user_id', user.id);
-        
-        if (error) {
-          console.error('Error fetching orders:', error);
-          throw error;
-        }
-        
-        console.log('Retrieved orders from Supabase:', supabaseOrders);
-        
-        // Transform Supabase data to match our Order interface
-        if (supabaseOrders && supabaseOrders.length > 0) {
-          const transformedOrders = supabaseOrders.map(order => {
-            const orderItems = order.order_items.map((item: any) => ({
-              id: item.id,
-              productId: item.product_id,
-              name: item.product_name,
-              price: item.price,
-              amount: item.quantity,
-              quantity: item.quantity,
-              vendorId: item.vendor_id,
-              vendorName: item.vendor_name,
-              image: item.image || null
-            }));
-            
-            return {
-              id: order.id,
-              customerId: order.user_id,
-              customerName: order.customer_name,
-              items: orderItems,
-              summary: {
-                subtotal: order.subtotal,
-                deliveryFee: order.delivery_fee,
-                total: order.total,
-                isDeliveryFeeWaived: order.delivery_fee === 0,
-                itemCount: orderItems.reduce((sum: number, item: any) => sum + item.quantity, 0)
-              },
-              status: order.status as OrderStatus,
-              createdAt: order.created_at,
-              updatedAt: order.updated_at,
-              deliveryAddress: order.delivery_address,
-              paymentMethod: order.payment_method
-            };
-          });
-          
-          console.log('Transformed orders:', transformedOrders);
-          
-          // Merge and deduplicate orders from both sources
-          const orderIds = new Set(allOrders.map((o: Order) => o.id));
-          for (const order of transformedOrders) {
-            if (!orderIds.has(order.id)) {
-              allOrders.push(order);
-              orderIds.add(order.id);
-            }
+        // If Realm is configured and the current user is authenticated, try fetching from MongoDB Atlas
+        if (realmApp && realmApp.currentUser) {
+          try {
+            const db = getMongoClient();
+            const ordersColl = db.collection('full_orders');
+            const itemsColl = db.collection('order_items');
+
+            const ordersData = await ordersColl.find({ user_id: user.id }, { sort: { created_at: -1 } });
+            const ordersWithItems = await Promise.all(
+              ordersData.map(async (o: DbOrderRecord) => {
+                const items = await itemsColl.find({ order_id: o.id }) as DbOrderItemRecord[];
+                return ({
+                  id: o.id,
+                  customerId: o.user_id || user.id,
+                  customerName: o.customer_name || user.name,
+                  items: items.map((it: DbOrderItemRecord) => ({
+                    id: it.id,
+                    name: it.product_name || '',
+                    amount: it.amount || 1,
+                    price: it.price || 0,
+                    productId: it.product_id || '',
+                    vendorId: it.vendor_id || '',
+                    vendorName: it.vendor_name || '',
+                    image: it.image || ''
+                  })),
+                  summary: {
+                    subtotal: o.subtotal || 0,
+                    deliveryFee: o.delivery_fee || 0,
+                    total: o.total || 0
+                  },
+                  status: o.status || 'processing',
+                  createdAt: o.created_at || new Date().toISOString(),
+                  updatedAt: o.updated_at || o.created_at || new Date().toISOString(),
+                  deliveryAddress: o.delivery_address || '',
+                  paymentMethod: o.payment_method || ''
+                });
+              })
+            );
+
+            setOrders(ordersWithItems as Order[]);
+            setIsLoading(false);
+            return;
+          } catch (err) {
+            console.warn('Failed to fetch orders from Atlas, falling back to localStorage', err);
           }
         }
-        
+
+        // Fallback: First load from localStorage for backward compatibility
+        const savedOrders = localStorage.getItem('aquaflow_orders');
+        const allOrders = savedOrders ? JSON.parse(savedOrders) : [];
         setOrders(allOrders);
       } catch (err) {
         console.error("Error fetching orders:", err);
@@ -162,117 +164,88 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     
     try {
-      console.log('Creating order with items:', items);
-      
-      // Create order in Supabase
-      const { data: orderData, error: orderError } = await supabase
-        .from('full_orders')
-        .insert({
-          user_id: customerId,
-          customer_name: customerName,
-          delivery_address: deliveryAddress,
-          payment_method: paymentMethod,
-          status: 'processing',
-          subtotal: summary.subtotal,
-          delivery_fee: summary.deliveryFee,
-          total: summary.total
-        })
-        .select()
-        .single();
-      
-      if (orderError) {
-        console.error('Order creation error:', orderError);
-        throw new Error(`Failed to create order: ${orderError.message}`);
-      }
-      
-      console.log('Created order:', orderData);
-      
-      // Create order items in Supabase - Fix the product ID issue here
-      const orderItems = items.map(item => {
-        // Convert numeric IDs to UUID format if needed
-        // This ensures IDs are in the proper UUID format
-        const processedProductId = item.productId.includes('-') ? item.productId : undefined;
-        const processedVendorId = item.vendorId.includes('-') ? item.vendorId : undefined;
+      // Build local order
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
 
-        return {
-          order_id: orderData.id,
-          product_id: processedProductId || crypto.randomUUID(), // Generate UUID if invalid
-          product_name: item.name,
-          quantity: item.quantity,
-          amount: item.quantity,
-          price: item.price,
-          vendor_id: processedVendorId || "00000000-0000-0000-0000-000000000000", // Default UUID if invalid
-          vendor_name: item.vendorName,
-          image: item.image
-        };
-      });
-      
-      console.log('Creating order items:', orderItems);
-      
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItems);
-      
-      if (itemsError) {
-        console.error('Order items creation error:', itemsError);
-        await supabase
-          .from('full_orders')
-          .update({ status: 'cancelled' })
-          .eq('id', orderData.id);
-        throw new Error(`Failed to create order items: ${itemsError.message}`);
-      }
-      
-      // Create payment transaction record
-      const { error: paymentError } = await supabase
-        .from('payment_transactions')
-        .insert({
-          order_id: orderData.id,
-          payment_method: paymentMethod,
-          amount: summary.total,
-          status: paymentMethod === 'cash' ? 'cash_on_delivery' : 'completed',
-          transaction_id: `tr_${Date.now()}`,
-          transaction_data: { 
-            payment_details: paymentMethod === 'cash' ? 'Cash on delivery' : 'Payment processed' 
-          }
-        });
-      
-      if (paymentError) {
-        console.error('Payment transaction error:', paymentError);
-        await supabase
-          .from('full_orders')
-          .update({ status: 'payment_failed' })
-          .eq('id', orderData.id);
-        throw new Error(`Failed to create payment transaction: ${paymentError.message}`);
-      }
-      
-      // Create the order object to return
       const newOrder: Order = {
-        id: orderData.id,
+        id,
         customerId,
         customerName,
         items,
         summary,
         status: 'processing',
-        createdAt: orderData.created_at,
-        updatedAt: orderData.created_at,
+        createdAt: now,
+        updatedAt: now,
         deliveryAddress,
         paymentMethod,
       };
-      
-      // Update local state
-      setOrders(prevOrders => [...prevOrders, newOrder]);
-      
-      toast({
-        title: "Order placed",
-        description: `Your order #${newOrder.id.slice(-8)} has been placed successfully and is being processed.`,
-      });
-      
+
+      // If Realm is configured and authenticated, persist to MongoDB Atlas (full_orders + order_items)
+      if (realmApp && realmApp.currentUser) {
+        try {
+          const db = getMongoClient();
+          const ordersColl = db.collection('full_orders');
+          const itemsColl = db.collection('order_items');
+
+          const orderDoc = {
+            id,
+            user_id: customerId,
+            customer_name: customerName,
+            delivery_address: deliveryAddress,
+            payment_method: paymentMethod,
+            status: newOrder.status,
+            subtotal: summary.subtotal,
+            delivery_fee: summary.deliveryFee,
+            total: summary.total,
+            created_at: now,
+            updated_at: now
+          };
+
+          await ordersColl.insertOne(orderDoc);
+
+          const itemsDocs = items.map(item => ({
+            id: item.id || crypto.randomUUID(),
+            order_id: id,
+            product_id: (item as unknown as Record<string, unknown>).productId as string || item.id || '',
+            product_name: item.name,
+            quantity: item.amount,
+            amount: item.amount,
+            price: item.price,
+            vendor_id: (item as unknown as Record<string, unknown>).vendorId as string || '',
+            vendor_name: (item as unknown as Record<string, unknown>).vendorName as string || '',
+            image: (item as unknown as Record<string, unknown>).image as string || ''
+          }));
+
+          if (itemsDocs.length > 0) await itemsColl.insertMany(itemsDocs);
+
+          // Update local state with the created order
+          setOrders(prev => [...prev, newOrder]);
+        } catch (err) {
+          console.error('Failed to persist order to Atlas, falling back to localStorage', err);
+          setOrders(prev => {
+            const next = [...prev, newOrder];
+            localStorage.setItem('aquaflow_orders', JSON.stringify(next));
+            return next;
+          });
+        }
+      } else {
+        // Persist locally
+        setOrders(prev => {
+          const next = [...prev, newOrder];
+          localStorage.setItem('aquaflow_orders', JSON.stringify(next));
+          return next;
+        });
+      }
+
+      toast({ title: 'Order placed', description: `Your order #${id.slice(-8)} has been placed successfully.` });
       return newOrder;
-    } catch (error: any) {
-      console.error('Error creating order:', error);
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error('Error creating order:', errMsg);
       toast({
         title: "Order failed",
-        description: `Order placement failed: ${error.message}`,
+        description: `Order placement failed: ${errMsg}`,
         variant: "destructive",
       });
       throw error;
@@ -286,33 +259,30 @@ export const OrderProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     
     try {
-      // Update order status in Supabase
-      const { error } = await supabase
-        .from('full_orders')
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq('id', orderId);
-      
-      if (error) throw error;
-      
-      // Update local state for backward compatibility
-      setOrders(prevOrders => prevOrders.map(order => 
-        order.id === orderId 
-          ? { ...order, status, updatedAt: new Date().toISOString() } 
-          : order
-      ));
-      
-      toast({
-        title: "Order updated",
-        description: `Order #${orderId.slice(-8)} status changed to ${status}`,
+      // Update local state
+      const updatedAt = new Date().toISOString();
+      // First try to update in Atlas if available
+      if (realmApp && realmApp.currentUser) {
+        try {
+          const db = getMongoClient();
+          const ordersColl = db.collection('full_orders');
+          await ordersColl.updateOne({ id: orderId }, { $set: { status, updated_at: updatedAt } });
+        } catch (err) {
+          console.warn('Failed to update order in Atlas, will update local state only', err);
+        }
+      }
+
+      setOrders(prev => {
+        const next = prev.map(o => o.id === orderId ? { ...o, status, updatedAt } : o);
+        localStorage.setItem('aquaflow_orders', JSON.stringify(next));
+        return next;
       });
-    } catch (error) {
-      console.error('Error updating order status:', error);
-      toast({
-        title: "Update failed",
-        description: "Failed to update order status. Please try again.",
-        variant: "destructive",
-      });
-      throw error;
+
+      toast({ title: 'Order updated', description: `Order #${orderId.slice(-8)} status changed to ${status}` });
+    } catch (err) {
+      console.error('Error updating order status:', err);
+      toast({ title: 'Update failed', description: 'Failed to update order status. Please try again.', variant: 'destructive' });
+      throw err;
     } finally {
       setIsLoading(false);
     }

@@ -9,12 +9,12 @@
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.5.3-blue.svg)](https://www.typescriptlang.org/)
   [![Vite](https://img.shields.io/badge/Vite-5.4.1-646CFF.svg)](https://vitejs.dev/)
   [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4.11-38B2AC.svg)](https://tailwindcss.com/)
-  [![Supabase](https://img.shields.io/badge/Supabase-2.49.4-3ECF8E.svg)](https://supabase.com/)
+  [![MongoDB Atlas](https://img.shields.io/badge/MongoDB_Atlas-Serverless-green)](https://www.mongodb.com/atlas)
 </div>
 
 ## 📖 About
 
-AquaFlow is a modern, full-stack web application that provides premium water delivery services. Built with React, TypeScript, and powered by Supabase, it offers a seamless experience for customers to order fresh water and for vendors to manage their operations.
+AquaFlow is a modern, full-stack web application that provides premium water delivery services. Built with React, TypeScript, and using MongoDB Atlas (Realm) for backend services, it offers a seamless experience for customers to order fresh water and for vendors to manage their operations.
 
 ### ✨ Key Features
 
@@ -38,9 +38,9 @@ AquaFlow is a modern, full-stack web application that provides premium water del
 - **React Hook Form** - Performant forms with validation
 
 ### Backend & Database
-- **Supabase** - Backend as a service
-- **PostgreSQL** - Robust relational database
-- **Real-time subscriptions** - Live data updates
+- **MongoDB Atlas (Realm)** - Backend and auth via Realm Web SDK
+- **MongoDB** - Document database hosted on Atlas
+- **App Services** - Functions and triggers via Realm/Atlas
 
 ### Development Tools
 - **ESLint** - Code linting
@@ -78,12 +78,24 @@ bun install
 
 ### 3. Environment Setup
 
-Create a `.env.local` file in the root directory and add your Supabase credentials:
+Create a `.env.local` file in the root directory and add your MongoDB Realm App ID:
 
 ```env
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_MONGODB_REALM_APP_ID=your_realm_app_id
 ```
+
+If you'd like to enable real Google AdSense ads so users can watch an ad to waive delivery fees (Option A), add your AdSense client id as well:
+
+```env
+# Optional: Google AdSense client id (example: ca-pub-1234567890123456)
+VITE_ADSENSE_CLIENT=ca-pub-XXXXXXXXXXXX
+```
+
+Notes on AdSense:
+- The app will fallback to a simulated ad player when `VITE_ADSENSE_CLIENT` is not set.
+- If you want to target a specific ad unit, also set `VITE_ADSENSE_AD_SLOT` to your ad slot id (example: `7353694377`).
+- AdSense must be configured for the domain you host the app on. During local development you can still test with the simulated ad.
+- The repository uses a heuristic to detect an ad iframe and mark the ad as "viewed" — this is not an official AdSense callback. For production, consider server-side verification or a formal ad tracking integration.
 
 ### 4. Start Development Server
 
@@ -116,7 +128,7 @@ AquaFlow/
 │   │   └── ProductContext.tsx
 │   ├── hooks/            # Custom React hooks
 │   ├── integrations/     # External service integrations
-│   │   └── supabase/
+│   │   └── mongodb/
 │   ├── lib/              # Utility functions
 │   ├── pages/            # Application pages/routes
 │   │   ├── vendor/       # Vendor-specific pages
@@ -125,7 +137,7 @@ AquaFlow/
 │   │   ├── Login.tsx
 │   │   └── ...
 │   └── ...
-├── supabase/             # Supabase configuration
+├── mongodb/              # MongoDB Realm / Atlas configuration
 ├── package.json
 └── README.md
 ```
@@ -157,7 +169,7 @@ AquaFlow/
 
 ### Technical Highlights
 - **Type Safety** - Full TypeScript implementation
-- **Real-time Data** - Supabase real-time subscriptions
+-- **Real-time Data** - Realm Functions / Change Streams
 - **Responsive Design** - Mobile-first approach
 - **Component Library** - Consistent UI with shadcn/ui
 - **Form Validation** - Robust form handling with Zod
@@ -207,7 +219,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Vite](https://vitejs.dev/) - Build tool and development server
 - [Tailwind CSS](https://tailwindcss.com/) - CSS framework
 - [shadcn/ui](https://ui.shadcn.com/) - UI component library
-- [Supabase](https://supabase.com/) - Backend and database
+-- [MongoDB Atlas](https://www.mongodb.com/atlas) - Backend and database
 - [Lucide React](https://lucide.dev/) - Icon library
 
 ## 📞 Support
@@ -221,7 +233,7 @@ If you have any questions or need help, please:
 ---
 
 <div align="center">
-  Made with ❤️ by the AquaFlow Team
+  Made with ❤️ by Aman
   
   **[Live Demo](https://aquaflow-demo.vercel.app)** • **[Documentation](https://github.com/Stranger1298/AquaFlow/wiki)** • **[Report Bug](https://github.com/Stranger1298/AquaFlow/issues)**
 </div>

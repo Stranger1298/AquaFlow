@@ -4,7 +4,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { NavigationBar } from '@/components/NavigationBar';
 import { useOrders } from '@/contexts/OrderContext';
-import { supabase } from "@/integrations/supabase/client";
+import { getMongoClient } from '@/integrations/mongodb/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from "@/components/ui/use-toast";
 
@@ -28,6 +28,17 @@ interface OrderDetails {
   items: OrderItem[];
 }
 
+interface DbOrder extends Record<string, unknown> {
+  id: string;
+  user_id?: string;
+  created_at: string;
+}
+
+interface DbOrderItem extends Record<string, unknown> {
+  id: string;
+  order_id: string;
+}
+
 export default function OrderConfirmation() {
   const { orderId } = useParams<{ orderId: string }>();
   const { getOrder, updateOrderStatus } = useOrders();
@@ -45,7 +56,7 @@ export default function OrderConfirmation() {
     }
   }, [isAuthenticated, isLoading, navigate]);
 
-  // Fetch order details from Supabase
+  // Fetch order details from MongoDB Atlas (Realm) or fall back to context/localStorage
   useEffect(() => {
     const fetchOrderDetails = async () => {
       if (!orderId) {
@@ -57,20 +68,48 @@ export default function OrderConfirmation() {
         setIsLoading(true);
         console.log('Fetching order details for orderID:', orderId);
         
-        // Try to get the order from Supabase
-        const { data: orderData, error: orderError } = await supabase
-          .from('full_orders')
-          .select('*')
-          .eq('id', orderId)
-          .single();
+        try {
+          const db = getMongoClient();
+          const ordersColl = db.collection('full_orders');
+          const itemsColl = db.collection('order_items');
 
-        if (orderError) {
-          console.error('Error fetching order:', orderError);
-          
-          // If not found in Supabase, try from context (legacy)
+          const orders = await ordersColl.find({ id: orderId }) as DbOrder[];
+          if (!orders || orders.length === 0) {
+            // Fallback to context
+            const contextOrder = getOrder(orderId);
+            if (contextOrder) {
+              setOrder({
+                id: contextOrder.id,
+                customer_name: contextOrder.customerName,
+                delivery_address: contextOrder.deliveryAddress,
+                payment_method: contextOrder.paymentMethod,
+                status: contextOrder.status,
+                subtotal: contextOrder.summary.subtotal,
+                delivery_fee: contextOrder.summary.deliveryFee,
+                total: contextOrder.summary.total,
+                created_at: contextOrder.createdAt,
+                items: contextOrder.items.map(item => ({
+                  id: item.id,
+                  product_name: item.name,
+                  amount: item.amount,
+                  price: item.price
+                }))
+              });
+            } else {
+              navigate('/');
+            }
+          } else {
+            const orderData = orders[0] as DbOrder;
+            const itemsData = await itemsColl.find({ order_id: orderId }) as DbOrderItem[];
+            setOrder({
+              ...orderData,
+              items: itemsData as OrderItem[]
+            });
+          }
+        } catch (err) {
+          console.warn('MongoDB Realm not configured or query failed, falling back to context', err);
           const contextOrder = getOrder(orderId);
           if (contextOrder) {
-            console.log('Found order in context:', contextOrder);
             setOrder({
               id: contextOrder.id,
               customer_name: contextOrder.customerName,
@@ -89,33 +128,9 @@ export default function OrderConfirmation() {
               }))
             });
           } else {
-            console.error('Order not found in context either');
             navigate('/');
           }
-          setIsLoading(false);
-          return;
         }
-
-        console.log('Order data from Supabase:', orderData);
-
-        // If found in Supabase, get the order items
-        const { data: itemsData, error: itemsError } = await supabase
-          .from('order_items')
-          .select('*')
-          .eq('order_id', orderId);
-
-        if (itemsError) {
-          console.error('Error fetching order items:', itemsError);
-          setIsLoading(false);
-          return;
-        }
-
-        console.log('Order items from Supabase:', itemsData);
-
-        setOrder({
-          ...orderData,
-          items: itemsData as OrderItem[]
-        });
       } catch (error) {
         console.error('Error fetching order:', error);
       } finally {
@@ -153,23 +168,19 @@ export default function OrderConfirmation() {
 
     const updateOrderInDb = async () => {
       try {
-        // Try to update in Supabase first
-        const { error } = await supabase
-          .from('full_orders')
-          .update({ status: 'completed' })
-          .eq('id', orderId);
-        
-        if (error) {
-          console.error('Failed to update order in Supabase:', error);
-          // Fall back to context update
-          if (updateOrderStatus) {
-            updateOrderStatus(orderId as string, 'completed');
-          }
+        // Try to update in MongoDB Atlas (Realm)
+        try {
+          const db = getMongoClient();
+          const ordersColl = db.collection('full_orders');
+          await ordersColl.updateOne({ id: orderId }, { $set: { status: 'completed' } });
+        } catch (err) {
+          console.warn('Failed to update order in MongoDB Realm, falling back to context', err);
+          if (updateOrderStatus) updateOrderStatus(orderId as string, 'completed');
         }
-        
+
         // Update local state
         setOrder(prev => prev ? { ...prev, status: 'completed' } : null);
-        
+
         toast({
           title: "Order Completed!",
           description: "Your order has been marked as completed.",

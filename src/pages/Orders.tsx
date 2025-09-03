@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { 
   Table, 
   TableBody, 
@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { NavigationBar } from '@/components/NavigationBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { getMongoClient } from '@/integrations/mongodb/client';
 import { Badge } from "@/components/ui/badge";
 
 // Types
@@ -44,21 +44,34 @@ interface Order {
   items?: OrderItem[];
 }
 
+// Types returned from MongoDB/Realm
+interface DbOrder extends Record<string, unknown> {
+  id: string;
+  user_id: string;
+  created_at: string;
+}
+
+interface DbOrderItem extends Record<string, unknown> {
+  id: string;
+  order_id: string;
+}
+
 export default function Orders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Wait until auth finishes loading before redirecting to login
+    if (!authLoading && !isAuthenticated) {
       navigate('/login');
     }
-  }, [isAuthenticated, navigate]);
+  }, [authLoading, isAuthenticated, navigate]);
 
-  // Fetch orders from Supabase
+  // Fetch orders from MongoDB Atlas (Realm) or fall back to localStorage
   useEffect(() => {
     const fetchOrders = async () => {
       if (!user) return;
@@ -66,35 +79,50 @@ export default function Orders() {
       setIsLoading(true);
       
       try {
-        // Fetch orders
-        const { data: ordersData, error: ordersError } = await supabase
-          .from('full_orders')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-          
-        if (ordersError) {
-          throw ordersError;
-        }
-        
-        // Fetch order items for each order
-        const ordersWithItems = await Promise.all(
-          ordersData.map(async (order) => {
-            const { data: itemsData, error: itemsError } = await supabase
-              .from('order_items')
-              .select('*')
-              .eq('order_id', order.id);
-              
-            if (itemsError) {
-              console.error('Error fetching order items:', itemsError);
-              return { ...order, items: [] };
+        // Try to fetch from MongoDB Atlas (Realm) if configured
+        try {
+          const db = getMongoClient();
+          const ordersColl = db.collection('full_orders');
+          const itemsColl = db.collection('order_items');
+
+          // Realm's find accepts an options object for sorting
+          const ordersData = await ordersColl.find({ user_id: user.id }, { sort: { created_at: -1 } }) as DbOrder[];
+
+          const ordersWithItems = await Promise.all(
+            ordersData.map(async (order: DbOrder) => {
+              const itemsData = await itemsColl.find({ order_id: order.id }) as DbOrderItem[];
+              // Cast via unknown to satisfy structural differences between DB rows and Order
+              return ({ ...order, items: itemsData } as unknown) as Order;
+            })
+          );
+
+          setOrders(ordersWithItems as Order[]);
+        } catch (err) {
+          console.warn('MongoDB Realm not configured or query failed, falling back to localStorage/context', err);
+
+          // Fallback: read from localStorage if present
+          const raw = localStorage.getItem('aquaflow_orders');
+          if (raw) {
+            try {
+              const localOrders = JSON.parse(raw) as DbOrder[];
+              const userOrders = localOrders.filter(o => o.user_id === user.id).map(o => ({
+                id: o.id,
+                customer_name: o.customer_name,
+                delivery_address: o.delivery_address,
+                payment_method: o.payment_method,
+                status: o.status,
+                subtotal: o.subtotal,
+                delivery_fee: o.delivery_fee,
+                total: o.total,
+                created_at: o.created_at,
+                items: o.items || []
+              })) as Order[];
+              setOrders(userOrders);
+            } catch (parseErr) {
+              console.error('Failed to parse local orders', parseErr);
             }
-            
-            return { ...order, items: itemsData };
-          })
-        );
-        
-        setOrders(ordersWithItems);
+          }
+        }
       } catch (error) {
         console.error('Error fetching orders:', error);
         toast({
@@ -142,7 +170,12 @@ export default function Orders() {
       <NavigationBar />
       
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">My Orders</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-800">My Orders</h1>
+          <Button variant="outline" asChild>
+            <Link to="/profile">Edit Profile</Link>
+          </Button>
+        </div>
         
         {isLoading ? (
           <div className="flex justify-center items-center h-40">

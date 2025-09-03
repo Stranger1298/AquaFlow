@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -9,6 +8,7 @@ interface AdPlayerProps {
   onClose: () => void;
 }
 
+// Note: filename avoids 'Ad' substring to reduce ad-blocker false-positives.
 export function AdPlayer({ onClose }: AdPlayerProps) {
   const [adProgress, setAdProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -20,10 +20,12 @@ export function AdPlayer({ onClose }: AdPlayerProps) {
 
   const adDuration = 10; // 10 seconds ad (simulated)
 
-  // Detect if AdSense is configured
+  // Detect if AdSense is configured and not disabled
   useEffect(() => {
     const client = import.meta.env.VITE_ADSENSE_CLIENT as string | undefined;
-    setUseAdsense(!!client);
+    const disabled = import.meta.env.VITE_ADSENSE_DISABLED === 'true';
+    const forceSim = import.meta.env.VITE_ADSENSE_FORCE_SIMULATED === 'true';
+    setUseAdsense(!!client && !disabled && !forceSim);
   }, []);
 
   // Setup simulated ad progress tracking (only for fallback)
@@ -136,7 +138,7 @@ export function AdPlayer({ onClose }: AdPlayerProps) {
         <>
           <div className="w-full max-w-md h-64 bg-gray-200 rounded-lg relative flex items-center justify-center overflow-hidden">
             {useAdsense ? (
-                <AdSenseAd adSlot={import.meta.env.VITE_ADSENSE_AD_SLOT as string} onAdComplete={handleAdsenseComplete} viewDuration={8} />
+              <AdSenseAd adSlot={import.meta.env.VITE_ADSENSE_AD_SLOT as string} onAdComplete={handleAdsenseComplete} viewDuration={8} />
             ) : (
               <div className="flex flex-col items-center justify-center">
                 {!userInteracted ? (

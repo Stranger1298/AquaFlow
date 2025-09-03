@@ -1,4 +1,5 @@
 
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useToast } from "@/components/ui/use-toast";
 import { Product } from './ProductContext';
@@ -71,6 +72,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     localStorage.setItem('aquaflow_waived_fee', JSON.stringify(isDeliveryFeeWaived));
   }, [isDeliveryFeeWaived]);
+
+  // Listen for ad-viewed events to waive delivery fee
+  useEffect(() => {
+    const handler = () => setIsDeliveryFeeWaived(true);
+    window.addEventListener('aquaflow:ad-viewed', handler as EventListener);
+    return () => window.removeEventListener('aquaflow:ad-viewed', handler as EventListener);
+  }, []);
 
   // Calculate cart summary
   const calculateSummary = (): CartSummary => {

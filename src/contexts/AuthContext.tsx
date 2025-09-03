@@ -1,7 +1,9 @@
 
+/* eslint-disable react-refresh/only-export-components */
+// @refresh reset
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { realmApp, loginWithEmail, registerWithEmail, logout, getCurrentUser, getMongoClient } from '@/integrations/mongodb/client';
 
 // Types
 export type UserRole = 'customer' | 'vendor' | null;
@@ -19,221 +21,158 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string, role: UserRole) => Promise<void>;
   register: (name: string, email: string, password: string, role: UserRole) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
-// Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Provider component
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  // Check for saved user on mount and set up auth listener
+  // Init: read current user and profile
   useEffect(() => {
-    // Subscribe to auth changes first to prevent missing events
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session) {
-          // Use setTimeout to avoid Supabase auth deadlock
-          setTimeout(async () => {
-            // Get user profile after sign in
-            const { data: profile, error } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .single();
-              
-            if (error && error.code !== 'PGRST116') {
-              console.error('Error fetching user profile:', error);
-            }
-            
-            setUser({
-              id: session.user.id,
-              email: session.user.email || '',
-              name: profile?.name || session.user.email?.split('@')[0] || 'User',
-              role: (profile?.account_type as UserRole) || 'customer'
-            });
-            
-            setIsLoading(false);
-          }, 0);
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setIsLoading(false);
-        }
-      }
-    );
-    
-    // Check for existing session right after setting up the listener
-    const checkSession = async () => {
+    (async () => {
+      setIsLoading(true);
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session) {
-          // Get user profile from database
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-            
-          if (error && error.code !== 'PGRST116') {
-            console.error('Error fetching user profile:', error);
+        const current = getCurrentUser();
+        if (!current) return;
+
+        const currentRec = current as unknown as Record<string, unknown>;
+        const currentId = (currentRec.id as string) || '';
+        const currentProfile = (currentRec.profile as Record<string, unknown> | undefined) || undefined;
+
+        // If Realm is configured and there is an authenticated Realm user, try to fetch profile document
+        if (realmApp && realmApp.currentUser) {
+          try {
+            const db = getMongoClient();
+            const profiles = db.collection('profiles');
+            const profile = await profiles.findOne({ user_id: currentId });
+            setUser({
+              id: currentId,
+              email: (currentProfile && (currentProfile.email as string)) || '',
+              name: (profile && (profile.name as string)) || (currentProfile && (currentProfile.name as string)) || 'User',
+              role: (profile && ((profile.account_type as unknown) as UserRole)) || 'customer'
+            });
+          } catch (err) {
+            console.error('Failed to load profile from Atlas', err);
+            setUser({ id: currentId, email: (currentProfile && (currentProfile.email as string)) || '', name: (currentProfile && (currentProfile.name as string)) || 'User', role: 'customer' });
           }
-          
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            name: profile?.name || session.user.email?.split('@')[0] || 'User',
-            role: (profile?.account_type as UserRole) || 'customer'
-          });
+        } else {
+          // Demo/local session or Realm not initialized: use session profile if present
+          setUser({ id: currentId, email: (currentProfile && (currentProfile.email as string)) || '', name: (currentProfile && (currentProfile.name as string)) || 'User', role: 'customer' });
         }
-      } catch (error) {
-        console.error('Session check error:', error);
+      } catch (err) {
+        console.error('Realm init error:', err);
       } finally {
         setIsLoading(false);
       }
-    };
-    
-    checkSession();
-    
-    return () => {
-      subscription.unsubscribe();
-    };
+    })();
   }, []);
 
-  // Login function
-  const login = async (email: string, password: string, role: UserRole): Promise<void> => {
+  const login = async (email: string, password: string, role: UserRole) => {
     setIsLoading(true);
-    
     try {
-      // Sign in with Supabase auth
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-      
-      if (error) {
-        throw error;
+      const u = await loginWithEmail(email, password);
+  const uRec = u as unknown as Record<string, unknown>;
+  const id = (uRec.id as string) || '';
+
+      // If Realm configured, try to read profile
+      if (realmApp) {
+        try {
+          const db = getMongoClient();
+          const profiles = db.collection('profiles');
+          const profile = await profiles.findOne({ user_id: id });
+          setUser({ id, email, name: (profile && (profile.name as string)) || email.split('@')[0], role: (profile && ((profile.account_type as unknown) as UserRole)) || 'customer' });
+        } catch (err) {
+          console.error('Failed to read profile after login', err);
+          setUser({ id, email, name: email.split('@')[0], role: 'customer' });
+        }
+      } else {
+  const profileObj = (uRec.profile as Record<string, unknown> | undefined) || undefined;
+  setUser({ id, email, name: (profileObj && (profileObj.name as string)) || email.split('@')[0], role: 'customer' });
       }
-      
-      // User will be set by the auth state listener
-      toast({
-        title: "Login successful",
-        description: `Welcome back!`,
-      });
-    } catch (error: any) {
-      console.error('Login error:', error);
-      toast({
-        title: "Login failed",
-        description: error.message || "Invalid email or password",
-        variant: "destructive",
-      });
-      setIsLoading(false); // Ensure loading is reset on error
-      throw error;
+
+      toast({ title: 'Login successful', description: 'Welcome back!' });
+    } catch (err) {
+      console.error('Login error:', err);
+      toast({ title: 'Login failed', description: (err as Error).message || 'Invalid email or password', variant: 'destructive' });
+      throw err;
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Register function
-  const register = async (name: string, email: string, password: string, role: UserRole): Promise<void> => {
+  const register = async (name: string, email: string, password: string, role: UserRole) => {
     setIsLoading(true);
-    
     try {
-      // Register with Supabase auth
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name,
-            role
+      await registerWithEmail(email, password, name, role || 'customer');
+
+      // If Realm is configured, registration does not automatically log the user in.
+      // Log the user in now so we can create a profile document tied to their user id.
+      if (realmApp) {
+        try {
+          const logged = await loginWithEmail(email, password);
+          const rec = logged as unknown as Record<string, unknown>;
+          const newId = (rec.id as string) || '';
+          if (newId) {
+            try {
+              const db = getMongoClient();
+              const profiles = db.collection('profiles');
+              await profiles.insertOne({ user_id: newId, name, account_type: role || 'customer', created_at: new Date().toISOString() });
+              setUser({ id: newId, email, name, role: role || 'customer' });
+            } catch (err) {
+              console.error('Failed to create profile in Atlas', err);
+            }
           }
+        } catch (err) {
+          // If login after registration fails, still continue (user may verify email in Realm flows)
+          console.error('Login after registration failed:', err);
         }
-      });
-      
-      if (error) {
-        throw error;
-      }
-      
-      if (data.user) {
-        // Create profile entry
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: data.user.id,
-            name,
-            account_type: role
-          });
-        
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-          toast({
-            title: "Profile creation failed",
-            description: profileError.message,
-            variant: "destructive",
-          });
+      } else {
+        // Demo path: registerWithEmail already created session and set demo user
+        const current = getCurrentUser();
+        if (current) {
+          const rec = current as unknown as Record<string, unknown>;
+          const id = (rec.id as string) || '';
+          setUser({ id, email, name, role: role || 'customer' });
         }
-        
-        // User will be set by the auth state listener
-        toast({
-          title: "Registration successful",
-          description: `Welcome, ${name}!`,
-        });
       }
-    } catch (error: any) {
-      console.error('Registration error:', error);
-      toast({
-        title: "Registration failed",
-        description: error.message || "Failed to create account",
-        variant: "destructive",
-      });
-      setIsLoading(false); // Ensure loading is reset on error
-      throw error;
+
+      toast({ title: 'Registration successful', description: `Welcome, ${name}!` });
+    } catch (err) {
+      console.error('Registration error:', err);
+      toast({ title: 'Registration failed', description: (err as Error).message || 'Failed to create account', variant: 'destructive' });
+      throw err;
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Logout function
-  const logout = async () => {
+  const logoutUser = async () => {
+    setIsLoading(true);
     try {
-      await supabase.auth.signOut();
-      // User will be cleared by the auth state listener
-      toast({
-        title: "Logged out",
-        description: "You have been logged out successfully",
-      });
-    } catch (error) {
-      console.error('Logout error:', error);
-      toast({
-        title: "Logout failed",
-        description: "There was an error logging out",
-        variant: "destructive",
-      });
+      await logout();
+      setUser(null);
+      toast({ title: 'Logged out', description: 'You have been logged out successfully' });
+    } catch (err) {
+      console.error('Logout error:', err);
+      toast({ title: 'Logout failed', description: 'There was an error logging out', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated: !!user,
-        isLoading,
-        login,
-        register,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, register, logout: logoutUser }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-// Custom hook to use the auth context
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

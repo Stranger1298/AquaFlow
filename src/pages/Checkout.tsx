@@ -28,6 +28,7 @@ import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrders } from '@/contexts/OrderContext';
 import { useToast } from "@/hooks/use-toast";
+import { AdSenseAd } from '@/components/AdSenseAd';
 
 export default function Checkout() {
   const { items, summary, clearCart } = useCart();
@@ -135,13 +136,14 @@ export default function Checkout() {
 
       // Navigate to order confirmation
       navigate(`/order-confirmation/${order.id}`);
-    } catch (error: any) {
-      console.error('Error placing order:', error);
-      setPaymentError(error.message || "There was an error processing your order. Please try again.");
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('Error placing order:', msg);
+      setPaymentError(msg || "There was an error processing your order. Please try again.");
       
       toast({
         title: "Order placement failed",
-        description: error.message || "There was an error processing your order. Please try again.",
+        description: msg || "There was an error processing your order. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -176,6 +178,22 @@ export default function Checkout() {
     }
     
     return v;
+  };
+
+  const handleAdComplete = () => {
+    // Waive delivery fee when ad viewed
+    try {
+      // useCart's waiveDeliveryFee is not directly imported here; use window event as simple bridge
+      const ev = new CustomEvent('aquaflow:ad-viewed');
+      window.dispatchEvent(ev);
+      setPaymentError(null); // Clear any errors
+      toast({
+        title: "Ad viewed!",
+        description: "Delivery fee has been waived.",
+      });
+    } catch (e) {
+      // ignore
+    }
   };
 
   return (
@@ -309,6 +327,17 @@ export default function Checkout() {
                     </div>
                   ))}
                 </div>
+
+                  {/* AdSense ad - viewing the ad waives delivery fee */}
+                  <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                    <div className="text-sm text-gray-600 mb-2">Watch a short ad to waive the delivery fee</div>
+                    <AdSenseAd adSlot={import.meta.env.VITE_ADSENSE_AD_SLOT as string || ''} onAdComplete={handleAdComplete} viewDuration={6} />
+                    {summary.isDeliveryFeeWaived && (
+                      <div className="mt-2 text-green-600 text-sm font-medium">
+                        ✓ Delivery fee waived!
+                      </div>
+                    )}
+                  </div>
 
                 <Separator />
 

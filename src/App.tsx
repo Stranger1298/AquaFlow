@@ -20,6 +20,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import VendorDashboard from "./pages/vendor/Dashboard";
 import NotFound from "./pages/NotFound";
+import Profile from "./pages/Profile";
 
 // Create a client with better caching and stale-while-revalidate config
 const queryClient = new QueryClient({
@@ -52,6 +53,7 @@ const App = () => {
                     <Route path="/orders" element={<Orders />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/profile" element={<Profile />} />
                     <Route path="/vendor/dashboard" element={<VendorDashboard />} />
                     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                     <Route path="*" element={<NotFound />} />
